@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparekey"
+version = "0.5.0"
+description = "Screen GIFs, playlists, lighting, key remapping and macros for the Royal Kludge S98 keyboard on Linux and macOS"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+dependencies = ["Pillow"]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: System :: Hardware",
+]
+
+[project.scripts]
+sparekey = "sparekey.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nateindahood/SpareKey"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sparekey = ["data/*.json"]

@@ -1,0 +1,10 @@
+[Unit]
+Description=sparekey: keyboard screen playlists and clock
+
+[Service]
+ExecStart=%h/.local/bin/sparekey service
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

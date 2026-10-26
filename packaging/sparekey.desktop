@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SpareKey
+Comment=Screen GIFs, lighting and keys for the RK S98 keyboard
+Exec=sparekey gui
+Icon=input-keyboard
+Categories=Settings;HardwareSettings;
+Keywords=keyboard;RGB;GIF;screen;macro;
