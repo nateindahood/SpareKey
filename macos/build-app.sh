@@ -35,7 +35,14 @@ cat >"$APP/Contents/Info.plist" <<EOF
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 EOF
-codesign --force --deep --sign - "$APP"
+# Release builds are signed with the SpareKey certificate (macos/SpareKey-signing.pem) so macOS keeps the
+# Input Monitoring permission across versions; CI sets SIGN_IDENTITY. Without it the build is signed ad hoc.
+SIGN="${SIGN_IDENTITY:--}"
+codesign --force --deep --sign "$SIGN" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} "$APP"
+if [ "$SIGN" != "-" ]; then
+    REQ="$(codesign -d -r- "$APP" 2>&1)"
+    echo "$REQ" | grep -q 'certificate leaf' || { echo "unexpected signature: $REQ" >&2; exit 1; }
+fi
 echo "Built $APP"
 if [ "${1:-}" = "--install" ]; then
     rm -rf /Applications/SpareKey.app

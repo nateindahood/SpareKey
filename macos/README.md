@@ -19,11 +19,12 @@ keyboard through IOKit. It needs no Python.
    You only do this once.
 3. Allow SpareKey under **Input Monitoring** when macOS asks (see Permissions below).
 
-> **Each time you install a different version (newer or older), allow Input Monitoring again.**
-> SpareKey releases aren't signed with an Apple Developer ID, so macOS treats every version as a new
-> app. The switch in Settings may still look on, but it belongs to the version you had before.
-> Remove SpareKey from the Input Monitoring list with the − button, then open SpareKey and allow it
-> when asked. Details under [Permissions](#permissions).
+> **Updating from 0.5.2 or older, or going back to one of those versions?** Allow Input Monitoring
+> again this one time. Those versions were signed differently, so macOS treats them as another app.
+> The switch in Settings may still look on, but it belongs to the version you had before. Remove
+> SpareKey from the Input Monitoring list with the − button, then open SpareKey and allow it when
+> asked. From 0.5.3 on, releases are signed with the same certificate, and the permission carries over
+> when you update. See [How releases are signed](#how-releases-are-signed).
 
 ## Build
 
@@ -32,7 +33,7 @@ Requires macOS 13+ and the Xcode command line tools (`xcode-select --install`).
 ```sh
 cd macos
 swift test                    # protocol tests against ../spec/vectors (no keyboard needed)
-./build-app.sh                # -> build/SpareKey.app (ad-hoc signed)
+./build-app.sh                # -> build/SpareKey.app (signed ad hoc)
 open build/SpareKey.app
 ```
 
@@ -47,10 +48,11 @@ System Settings → Privacy & Security → Input Monitoring, then quit and reope
 the app. SpareKey only uses the vendor configuration reports; it doesn't read
 your typing.
 
-**After updating, downgrading or rebuilding,** macOS blocks the keyboard again even
-though the Input Monitoring switch is still on. Releases and `build-app.sh` builds are
-signed ad hoc (no Apple Developer ID), and macOS ties the permission to that exact build,
-so the switch belongs to the copy you had before. SpareKey then says so. Select SpareKey in the Input Monitoring list, remove it with the −
+**When the permission doesn't carry over,** macOS blocks the keyboard even though the
+Input Monitoring switch is still on. This happens when you move between a release from
+0.5.3 on and 0.5.2 or older, or install a copy you built yourself, because macOS ties the
+permission to how the app is signed. The switch then belongs to the copy you had
+before, and SpareKey says so. Select SpareKey in the Input Monitoring list, remove it with the −
 button, then reopen SpareKey and allow it when asked. Or reset the grant from a
 terminal:
 
@@ -58,10 +60,42 @@ terminal:
 tccutil reset ListenEvent io.github.nateindahood.sparekey
 ```
 
-If you build SpareKey yourself and rebuild often, signing with your own self-signed
-certificate (Keychain Access → Certificate Assistant → Create a Certificate, type "Code
-Signing", then `codesign -s "<name>"` in `build-app.sh`) keeps the permission across
-your builds.
+If you build SpareKey yourself and rebuild often, sign with your own self-signed
+certificate to keep the permission across your builds: Keychain Access → Certificate
+Assistant → Create a Certificate, type "Code Signing", then
+`SIGN_IDENTITY="<name>" ./build-app.sh`.
+
+## How releases are signed
+
+From 0.5.3 on, the `SpareKey.app` in each release is signed with a **self-signed certificate
+named "SpareKey"**. Every release uses the same certificate, so macOS knows a new version is
+the same app and keeps your Input Monitoring permission.
+
+- **It isn't an Apple Developer ID.** Apple hasn't checked it, and it says nothing about who made
+  the app. It only shows that every release came from the same signer. macOS still asks you to
+  click **Open Anyway** the first time.
+- **Everything about it is public except the private key.** The certificate's public half is
+  [`SpareKey-signing.pem`](SpareKey-signing.pem), and
+  [the release workflow](../.github/workflows/release.yml) shows how each DMG is built and signed
+  on GitHub's Macs, with the logs on the repo's Actions page. The private key is stored only as an
+  encrypted GitHub secret (plus an offline backup), so nobody else can sign as SpareKey. The
+  workflow refuses to sign if the secret doesn't match the published certificate.
+- **Builds from source or forks** are signed ad hoc (or with your own certificate) and work the
+  same way, but macOS treats them as a different app.
+
+Its SHA-256 fingerprint is:
+
+```
+25:94:FD:18:89:4C:A5:D5:D2:2A:64:4E:65:2B:42:FB:4C:35:2F:36:B3:F3:E4:FF:1A:E9:36:2E:BD:A1:DA:49
+```
+
+To check an installed copy:
+
+```sh
+codesign -dvv /Applications/SpareKey.app 2>&1 | grep Authority          # Authority=SpareKey
+cd "$(mktemp -d)" && codesign -d --extract-certificates /Applications/SpareKey.app \
+  && openssl x509 -inform DER -in codesign0 -noout -fingerprint -sha256    # matches the line above
+```
 
 ## Troubleshooting
 

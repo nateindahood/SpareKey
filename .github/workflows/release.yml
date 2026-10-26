@@ -25,11 +25,40 @@ jobs:
       - name: Test
         working-directory: macos
         run: swift test
+      - name: Load the SpareKey signing certificate
+        # Its public half is macos/SpareKey-signing.pem. Forks don't get the secret and build ad hoc.
+        env:
+          P12: ${{ secrets.MACOS_SIGN_P12 }}
+          PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then echo "No signing secret: building ad hoc"; exit 0; fi
+          KC="$RUNNER_TEMP/sparekey.keychain-db"
+          KCPW="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/sparekey.p12"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          security import "$RUNNER_TEMP/sparekey.p12" -k "$KC" -P "$PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/sparekey.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          # sign only with the certificate published in the repo
+          security find-certificate -c SpareKey -p "$KC" > "$RUNNER_TEMP/sparekey.pem"
+          want=$(openssl x509 -in macos/SpareKey-signing.pem -noout -fingerprint -sha256)
+          got=$(openssl x509 -in "$RUNNER_TEMP/sparekey.pem" -noout -fingerprint -sha256)
+          [ "$want" = "$got" ] || { echo "secret certificate doesn't match macos/SpareKey-signing.pem"; exit 1; }
+          echo "Signing with $got"
+          sha1=$(openssl x509 -in "$RUNNER_TEMP/sparekey.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)
+          echo "SIGN_IDENTITY=$sha1" >> "$GITHUB_ENV"
+          echo "SIGN_KEYCHAIN=$KC" >> "$GITHUB_ENV"
       - name: Build SpareKey.dmg (Apple Silicon + Intel)
         working-directory: macos
         env:
           ARCH_FLAGS: --arch arm64 --arch x86_64
         run: bash make-dmg.sh
+      - name: Show the signature
+        working-directory: macos
+        run: codesign -dvv build/SpareKey.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier'; codesign -d -r- build/SpareKey.app
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
         env:

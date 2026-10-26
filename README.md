@@ -74,9 +74,10 @@ sparekey backup / restore FILE / reset --yes / clock
 
 ## macOS
 
-See [macos/README.md](macos/README.md). Note: after installing a different version (newer or older),
-macOS needs you to allow Input Monitoring again. Remove SpareKey from the list in System Settings
-and allow it when the app asks. The macOS README explains why.
+See [macos/README.md](macos/README.md). From 0.5.3 on, Mac releases are signed with one
+self-signed "SpareKey" certificate, so the Input Monitoring permission carries over when you update.
+Coming from 0.5.2 or older, allow it again once: remove SpareKey from the list in System Settings and
+allow it when the app asks. The macOS README explains the signing and how to check it.
 
 ## Development
 
