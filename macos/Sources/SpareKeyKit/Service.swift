@@ -1,6 +1,6 @@
 import Foundation
 
-/// Backups, layer writes and the background playlist/clock service. Mirrors cli.py + service.py.
+/// Backups, layer writes and the background clock service. Mirrors cli.py + service.py.
 public enum Keyboard {
     public struct Backup: Codable {
         var version = 1
@@ -124,57 +124,15 @@ public enum Service {
         fflush(stdout)
     }
 
-    /// One scheduling step; true when it uploaded something.
-    @discardableResult
-    public static func runOnce(now: Double = Date().timeIntervalSince1970) -> Bool {
-        var st = Store.loadState()
-        guard let name = st.active, let pl = Store.loadConfig().playlists[name], let next = st.nextAt, now >= next else {
-            return false
-        }
-        guard let item = Store.nextItem(pl, &st) else {
-            log("playlist \(name) has no files left; stopping")
-            st.active = nil; st.nextAt = nil
-            Store.saveState(st)
-            return false
-        }
-        st.uploading = item; st.progress = 0
-        Store.saveState(st)
-        log("uploading \((item as NSString).lastPathComponent)")
-        var lastFrac = 0.0
-        var stopped = false
-        var err: String?
-        do {
-            try DeviceQueue.shared.runSync { d in try Keyboard.upload(d, URL(fileURLWithPath: item), fit: pl.fit, progress: { done, total in
-                let frac = Double(done) / Double(total)
-                guard frac - lastFrac >= 0.02 else { return }
-                lastFrac = frac
-                var cur = Store.loadState()
-                if cur.active != name { stopped = true; return }
-                cur.progress = frac
-                Store.saveState(cur)
-            }, cancelled: { stopped }) }
-        } catch {
-            err = error.localizedDescription
-        }
-        let cur = Store.loadState()
-        if cur.active == name {
-            st.uploading = nil; st.progress = nil; st.error = err
-            st.nextAt = Date().timeIntervalSince1970 + (err == nil ? Double(max(Store.minInterval, pl.interval) * 60) : 120)
-            Store.saveState(st)
-        }
-        log(err.map { "failed: \($0)" } ?? "done")
-        return err == nil
-    }
-
+    /// Keeps the keyboard clock right: sets it at login and every 10 minutes. Never waits behind an upload.
     public static func run() -> Never {
-        log("sparekey service started")
+        log("SpareKey clock service started")
         var lastClock = 0.0
         while true {
             let now = Date().timeIntervalSince1970
-            if runOnce(now: now) {
-                lastClock = Date().timeIntervalSince1970
-            } else if now - lastClock >= clockEvery {
-                if (try? DeviceQueue.shared.runSync(wait: false) { try $0.syncClock() }) != nil { lastClock = now }
+            if now - lastClock >= clockEvery,
+               (try? DeviceQueue.shared.runSync(wait: false) { try $0.syncClock() }) != nil {
+                lastClock = now
             }
             Thread.sleep(forTimeInterval: 15)
         }

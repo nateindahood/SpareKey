@@ -19,20 +19,15 @@ final class AppModel: ObservableObject {
 
     @Published var library: [URL] = []
     @Published var config = Store.loadConfig()
-    @Published var state = Store.loadState()
     @Published var uploadProgress: Double?
     @Published var uploadText = ""
     var cancelUpload = false
 
-    private var timer: Timer?
     private var lightWork: DispatchWorkItem?
 
     init() {
         Service.replaceOldAgent(executable: Bundle.main.executablePath ?? CommandLine.arguments[0])
         refreshLibrary()
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.state = Store.loadState()
-        }
         refresh()
     }
 
@@ -96,7 +91,6 @@ final class AppModel: ObservableObject {
     }
 
     func upload(_ url: URL, fit: Fit) {
-        if state.active != nil { Store.stopPlaylist(); state = Store.loadState() }
         cancelUpload = false
         uploadProgress = 0
         uploadText = "Converting…"
@@ -202,35 +196,7 @@ final class AppModel: ObservableObject {
         run("Factory reset…", { d in try Keyboard.backup(d); try d.factoryReset() }) { [weak self] _ in self?.refresh() }
     }
 
-    // MARK: playlists
-
-    func savePlaylist(_ name: String, _ p: Playlist) { Store.savePlaylist(name, p); config = Store.loadConfig() }
-    func deletePlaylist(_ name: String) { Store.deletePlaylist(name); config = Store.loadConfig(); state = Store.loadState() }
-    func renamePlaylist(_ old: String, _ new: String) { Store.renamePlaylist(old, new); config = Store.loadConfig() }
-
-    func addToPlaylist(_ name: String, _ urls: [URL]) {
-        var p = config.playlists[name] ?? Playlist()
-        for u in urls where !p.items.contains(u.path) { p.items.append(u.path) }
-        savePlaylist(name, p)
-        status = "Added to “\(name)”."
-    }
-
-    func startPlaylist(_ name: String) {
-        if !Service.isInstalled { installService() }
-        Store.startPlaylist(name)
-        state = Store.loadState()
-        status = "Playlist “\(name)” started; the first GIF is on its way."
-    }
-
-    func stopPlaylist() { Store.stopPlaylist(); state = Store.loadState() }
-
-    func nextNow() {
-        var st = Store.loadState()
-        guard st.active != nil else { return }
-        st.nextAt = 0
-        Store.saveState(st)
-        state = st
-    }
+    // MARK: clock service
 
     func installService() {
         do {

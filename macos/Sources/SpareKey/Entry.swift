@@ -1,7 +1,7 @@
 import Foundation
 import SpareKeyKit
 
-/// `SpareKey --service` runs the background playlist/clock loop (used by the LaunchAgent);
+/// `SpareKey --service` runs the background clock loop (used by the LaunchAgent);
 /// `SpareKey --info` prints the keyboard state for quick testing; otherwise the app opens.
 @main
 enum Entry {

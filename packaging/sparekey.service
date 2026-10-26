@@ -1,5 +1,5 @@
 [Unit]
-Description=sparekey: keyboard screen playlists and clock
+Description=SpareKey: keeps the keyboard clock in sync
 
 [Service]
 ExecStart=%h/.local/bin/sparekey service

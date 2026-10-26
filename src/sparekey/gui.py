@@ -274,7 +274,6 @@ class Window(Gtk.ApplicationWindow):
         outer.pack_start(Gtk.StackSwitcher(stack=stack, halign=Gtk.Align.CENTER, margin=6), False, False, 0)
         outer.pack_start(stack, True, True, 0)
         stack.add_titled(self._screen_page(), "screen", "Screen")
-        stack.add_titled(self._playlist_page(), "playlists", "Playlists")
         stack.add_titled(self._lighting_page(), "lighting", "Lighting")
         stack.add_titled(self._keys_page(), "keys", "Keys")
         stack.add_titled(self._macros_page(), "macros", "Macros")
@@ -296,11 +295,9 @@ class Window(Gtk.ApplicationWindow):
         self.progress_box.hide()
         self.custom_box.hide()
         self._watch_library()
-        self._fill_playlists()
         if page:
             stack.set_visible_child_name(page)
         self.refresh()
-        GLib.timeout_add_seconds(2, self._tick_playlist)
 
     # ------------------------------------------------------------ helpers --
 
@@ -464,30 +461,12 @@ class Window(Gtk.ApplicationWindow):
         info = Gtk.Label(label="%d frame%s · ~%s" % (n, "" if n == 1 else "s", _minutes(media.estimate_seconds(n))))
         info.get_style_context().add_class("dim-label")
         box.pack_start(info, False, False, 0)
-        add = Gtk.Button.new_from_icon_name("list-add-symbolic", Gtk.IconSize.BUTTON)
-        add.set_tooltip_text("Add to a playlist")
-        add.connect("clicked", lambda b: self._playlist_menu(path).popup_at_widget(
-            b, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None))
-        box.pack_start(add, False, False, 0)
         box.pack_start(_button(None, "Send to the keyboard", lambda: self._upload(path), "go-next-symbolic"),
                        False, False, 0)
         box.pack_start(_button(None, "Move to the trash (removes it from your library only)",
                                lambda: self._trash_library_file(path), "user-trash-symbolic"), False, False, 0)
         row.add(box)
         return row
-
-    def _playlist_menu(self, path):
-        menu = Gtk.Menu()
-        for name in store.playlists():
-            item = Gtk.MenuItem(label="Add to “%s”" % name)
-            item.connect("activate", lambda _i, n=name: self._add_to_playlist(n, [path]))
-            menu.append(item)
-        new = Gtk.MenuItem(label="New playlist…")
-        new.connect("activate", lambda _i: self._new_playlist([path]))
-        menu.append(new)
-        menu.show_all()
-        self._menu = menu    # keep a reference while it's open
-        return menu
 
     def _add_files(self, paths):
         added, skipped = 0, []
@@ -612,15 +591,6 @@ class Window(Gtk.ApplicationWindow):
         self._upload(path)
 
     def _upload(self, path):
-        if store.load_state().get("active"):
-            dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
-                                    buttons=Gtk.ButtonsType.OK_CANCEL,
-                                    text="A playlist is running. Stop it and send this file instead?")
-            resp = dlg.run()
-            dlg.destroy()
-            if resp != Gtk.ResponseType.OK:
-                return
-            store.stop_playlist()
         fit = self.fit_combo.get_active_id()
         self.cancel_upload = False
         self.progress.set_fraction(0)
@@ -669,299 +639,7 @@ class Window(Gtk.ApplicationWindow):
         self.progress.set_text(text)
         return False
 
-    # ---------------------------------------------------------- playlists --
-
-    def _playlist_page(self):
-        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, margin=12)
-        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        head = Gtk.Box(spacing=6)
-        head.pack_start(_heading("Playlists"), True, True, 0)
-        head.pack_start(_button("New…", "Create a playlist", lambda: self._new_playlist([])), False, False, 0)
-        left.pack_start(head, False, False, 0)
-        self.pl_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
-        self.pl_list.connect("row-selected", lambda *_: self._fill_playlist_items())
-        ph = _dim("No playlists yet. Create one, then add GIFs\nfrom your library.", justify=Gtk.Justification.CENTER)
-        ph.set_xalign(0.5)
-        ph.show()
-        self.pl_list.set_placeholder(ph)
-        sc = Gtk.ScrolledWindow(vexpand=True)
-        sc.add(self.pl_list)
-        sc.set_size_request(300, -1)
-        left.pack_start(sc, True, True, 0)
-
-        self.pl_status = Gtk.Label(xalign=0, wrap=True, max_width_chars=40)
-        left.pack_start(self.pl_status, False, False, 0)
-        self.pl_progress = Gtk.ProgressBar(show_text=True)
-        left.pack_start(self.pl_progress, False, False, 0)
-        self.svc_switch = Gtk.Switch(halign=Gtk.Align.START, active=self._service_active())
-        self.svc_switch.connect("notify::active", self._service_toggled)
-        left.pack_start(_row("Background service", self.svc_switch), False, False, 0)
-        left.pack_start(_dim("The service switches GIFs on schedule and keeps the keyboard clock right, "
-                             "even when this window is closed. It starts when you log in.", max_width_chars=40),
-                        False, False, 0)
-        paned.pack1(left, False, False)
-
-        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_start=12)
-        self.pl_title = _heading("")
-        right.pack_start(self.pl_title, False, False, 0)
-        opts = Gtk.Box(spacing=12)
-        self.pl_order = _combo([("loop", "Play in order"), ("shuffle", "Shuffle")])
-        self.pl_order.connect("changed", lambda *_: self._save_playlist_opts())
-        opts.pack_start(self.pl_order, False, False, 0)
-        opts.pack_start(Gtk.Label(label="Switch every"), False, False, 0)
-        self.pl_interval = Gtk.SpinButton.new_with_range(store.MIN_INTERVAL, 24 * 60, 5)
-        self.pl_interval.connect("value-changed", lambda *_: self._save_playlist_opts())
-        opts.pack_start(self.pl_interval, False, False, 0)
-        opts.pack_start(Gtk.Label(label="minutes"), False, False, 0)
-        self.pl_fit = _combo(media.FITS)
-        self.pl_fit.connect("changed", lambda *_: self._save_playlist_opts())
-        opts.pack_start(self.pl_fit, False, False, 0)
-        right.pack_start(opts, False, False, 0)
-
-        self.pl_items = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
-        ph2 = _dim("Empty. Use “Add from library…” or the + button next to a file on the Screen tab.")
-        ph2.show()
-        self.pl_items.set_placeholder(ph2)
-        sc2 = Gtk.ScrolledWindow(vexpand=True)
-        sc2.add(self.pl_items)
-        right.pack_start(sc2, True, True, 0)
-
-        actions = Gtk.Box(spacing=8)
-        actions.pack_start(_button("Add from library…", "Pick GIFs to add", self._pick_for_playlist), False, False, 0)
-        self.pl_start = _button("Start", "Start this playlist now", self._start_playlist, suggested=True)
-        actions.pack_start(self.pl_start, False, False, 0)
-        actions.pack_start(_button("Next now", "Skip to the next GIF", self._next_now), False, False, 0)
-        actions.pack_start(_button("Stop", "Stop switching (the current GIF stays)", self._stop_playlist),
-                           False, False, 0)
-        actions.pack_end(_button(None, "Delete this playlist", self._delete_playlist, "user-trash-symbolic"),
-                         False, False, 0)
-        actions.pack_end(_button("Rename…", "Rename this playlist", self._rename_playlist), False, False, 0)
-        right.pack_start(actions, False, False, 0)
-        right.pack_start(_dim("Every switch re-sends the GIF (minutes per GIF), so intervals start at %d minutes "
-                              "and 30–60 are a good choice: it keeps flash writes to the keyboard modest."
-                              % store.MIN_INTERVAL), False, False, 0)
-        paned.pack2(right, True, False)
-        self.pl_right = right
-        return paned
-
-    def _selected_playlist(self):
-        row = self.pl_list.get_selected_row()
-        return getattr(row, "name", None) if row else None
-
-    def _fill_playlists(self, select=None):
-        select = select or self._selected_playlist()
-        active = store.load_state().get("active")
-        for c in self.pl_list.get_children():
-            self.pl_list.remove(c)
-        sel_row = None
-        for name, pl in store.playlists().items():
-            row = Gtk.ListBoxRow()
-            row.name = name
-            box = Gtk.Box(spacing=8, margin=6)
-            box.pack_start(Gtk.Label(label="▶" if name == active else " "), False, False, 0)
-            box.pack_start(Gtk.Label(label=name, xalign=0, ellipsize=3), True, True, 0)
-            d = _dim("%d · %s" % (len(pl["items"]), "shuffle" if pl["order"] == "shuffle" else "in order"))
-            box.pack_start(d, False, False, 0)
-            row.add(box)
-            self.pl_list.add(row)
-            if name == select or sel_row is None:
-                sel_row = row
-        self.pl_list.show_all()
-        if sel_row:
-            self.pl_list.select_row(sel_row)
-        self._fill_playlist_items()
-
-    def _fill_playlist_items(self):
-        name = self._selected_playlist()
-        pl = store.playlists().get(name) if name else None
-        self.pl_right.set_sensitive(pl is not None)
-        for c in self.pl_items.get_children():
-            self.pl_items.remove(c)
-        if not pl:
-            self.pl_title.set_markup("<b>Select or create a playlist</b>")
-            return
-        self.pl_title.set_markup("<b>%s</b>" % GLib.markup_escape_text(name))
-        self._loading_pl = True
-        self.pl_order.set_active_id(pl.get("order", "loop"))
-        self.pl_interval.set_value(pl.get("interval", store.DEFAULT_INTERVAL))
-        self.pl_fit.set_active_id(pl.get("fit", "cover"))
-        self._loading_pl = False
-        current = store.load_state().get("current")
-        for i, path in enumerate(pl["items"]):
-            row = Gtk.ListBoxRow()
-            box = Gtk.Box(spacing=8, margin=4)
-            box.pack_start(Gtk.Label(label="▶" if path == current else "%d" % (i + 1), width_chars=3),
-                           False, False, 0)
-            thumb = Gtk.Image.new_from_pixbuf(_thumb(path)) if _thumb(path) else Gtk.Image.new_from_icon_name("image-missing", Gtk.IconSize.BUTTON)
-            box.pack_start(thumb, False, False, 0)
-            lab = Gtk.Label(label=os.path.basename(path) + ("" if os.path.exists(path) else "  (missing)"),
-                            xalign=0, ellipsize=3)
-            lab.set_tooltip_text(path)
-            box.pack_start(lab, True, True, 0)
-            for icon, tip, delta in (("go-up-symbolic", "Move up", -1), ("go-down-symbolic", "Move down", 1)):
-                box.pack_start(_button(None, tip, lambda i=i, dlt=delta: self._move_item(i, dlt), icon),
-                               False, False, 0)
-            box.pack_start(_button(None, "Remove from this playlist", lambda i=i: self._remove_item(i),
-                                   "list-remove-symbolic"), False, False, 0)
-            row.add(box)
-            self.pl_items.add(row)
-        self.pl_items.show_all()
-
-    def _edit_playlist(self, name, fn):
-        pl = store.playlists().get(name)
-        if pl is None:
-            return
-        items = list(pl["items"])
-        fn(items)
-        store.save_playlist(name, items, pl["order"], pl["interval"], pl.get("fit", "cover"))
-        self._fill_playlists(name)
-
-    def _move_item(self, i, delta):
-        def f(items):
-            j = i + delta
-            if 0 <= j < len(items):
-                items[i], items[j] = items[j], items[i]
-        self._edit_playlist(self._selected_playlist(), f)
-
-    def _remove_item(self, i):
-        self._edit_playlist(self._selected_playlist(), lambda items: items.pop(i))
-
-    def _add_to_playlist(self, name, paths):
-        self._edit_playlist(name, lambda items: items.extend(p for p in paths if p not in items))
-        self.status.set_text("Added to “%s”." % name)
-
-    def _ask_name(self, title, initial=""):
-        dlg = Gtk.Dialog(title=title, transient_for=self, modal=True)
-        dlg.add_buttons("_Cancel", Gtk.ResponseType.CANCEL, "_OK", Gtk.ResponseType.OK)
-        dlg.set_default_response(Gtk.ResponseType.OK)
-        entry = Gtk.Entry(text=initial, activates_default=True, margin=12)
-        dlg.get_content_area().add(entry)
-        dlg.show_all()
-        resp = dlg.run()
-        text = entry.get_text().strip()
-        dlg.destroy()
-        return text if resp == Gtk.ResponseType.OK and text else None
-
-    def _new_playlist(self, paths):
-        name = self._ask_name("New playlist", "Playlist %d" % (len(store.playlists()) + 1))
-        if not name:
-            return
-        if name in store.playlists():
-            self._add_to_playlist(name, paths)
-            return
-        store.save_playlist(name, paths)
-        self._fill_playlists(name)
-        self.stack.set_visible_child_name("playlists")
-
-    def _rename_playlist(self):
-        old = self._selected_playlist()
-        new = self._ask_name("Rename playlist", old or "")
-        if old and new:
-            store.rename_playlist(old, new)
-            self._fill_playlists(new)
-
-    def _delete_playlist(self):
-        name = self._selected_playlist()
-        if not name:
-            return
-        dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
-                                buttons=Gtk.ButtonsType.OK_CANCEL,
-                                text="Delete the playlist “%s”? (Your GIFs stay in the library.)" % name)
-        resp = dlg.run()
-        dlg.destroy()
-        if resp == Gtk.ResponseType.OK:
-            store.delete_playlist(name)
-            self._fill_playlists()
-
-    def _save_playlist_opts(self):
-        if getattr(self, "_loading_pl", False):
-            return
-        name = self._selected_playlist()
-        pl = store.playlists().get(name)
-        if pl:
-            store.save_playlist(name, pl["items"], self.pl_order.get_active_id(), int(self.pl_interval.get_value()),
-                                self.pl_fit.get_active_id())
-
-    def _pick_for_playlist(self):
-        name = self._selected_playlist()
-        if not name:
-            return
-        dlg = Gtk.Dialog(title="Add to “%s”" % name, transient_for=self, modal=True)
-        dlg.set_default_size(520, 520)
-        dlg.add_buttons("_Cancel", Gtk.ResponseType.CANCEL, "_Add", Gtk.ResponseType.OK)
-        box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        checks = []
-        for path in store.list_library():
-            row = Gtk.Box(spacing=8, margin=4)
-            cb = Gtk.CheckButton()
-            checks.append((cb, path))
-            row.pack_start(cb, False, False, 0)
-            thumb = Gtk.Image.new_from_pixbuf(_thumb(path)) if _thumb(path) else Gtk.Image.new_from_icon_name("image-missing", Gtk.IconSize.BUTTON)
-            row.pack_start(thumb, False, False, 0)
-            row.pack_start(Gtk.Label(label=os.path.basename(path), xalign=0, ellipsize=3), True, True, 0)
-            box.add(row)
-        sc = Gtk.ScrolledWindow(vexpand=True)
-        sc.add(box)
-        dlg.get_content_area().pack_start(sc, True, True, 0)
-        dlg.show_all()
-        resp = dlg.run()
-        chosen = [p for cb, p in checks if cb.get_active()]
-        dlg.destroy()
-        if resp == Gtk.ResponseType.OK and chosen:
-            self._add_to_playlist(name, chosen)
-
-    def _start_playlist(self):
-        name = self._selected_playlist()
-        pl = store.playlists().get(name) if name else None
-        if not pl or not pl["items"]:
-            self.show_error("Add some GIFs to the playlist first.")
-            return
-        if not self._service_active():
-            self.svc_switch.set_active(True)
-            if not self._service_active():
-                return
-        store.start_playlist(name)
-        self._fill_playlists(name)
-        self.status.set_text("Playlist “%s” started; the first GIF is on its way." % name)
-
-    def _next_now(self):
-        st = store.load_state()
-        if st.get("active"):
-            st["next_at"] = 0
-            store.save_state(st)
-            self.status.set_text("Skipping to the next GIF…")
-
-    def _stop_playlist(self):
-        store.stop_playlist()
-        self._fill_playlists()
-
-    def _tick_playlist(self):
-        st = store.load_state()
-        active = st.get("active")
-        if not active:
-            self.pl_status.set_text("No playlist running.")
-            self.pl_progress.hide()
-        elif st.get("uploading"):
-            self.pl_status.set_markup("▶ <b>%s</b>: sending %s…" % (
-                GLib.markup_escape_text(active), GLib.markup_escape_text(os.path.basename(st["uploading"]))))
-            self.pl_progress.show()
-            self.pl_progress.set_fraction(st.get("progress") or 0)
-            self.pl_progress.set_text("%d%%" % ((st.get("progress") or 0) * 100))
-        else:
-            nxt = st.get("next_at")
-            when = "any moment" if not nxt or nxt <= time.time() else "in " + _minutes(nxt - time.time())
-            cur = os.path.basename(st.get("current") or "") or "—"
-            self.pl_status.set_markup("▶ <b>%s</b>: showing %s, next %s%s" % (
-                GLib.markup_escape_text(active), GLib.markup_escape_text(cur), when,
-                ("\nLast attempt failed: " + GLib.markup_escape_text(st["error"])) if st.get("error") else ""))
-            self.pl_progress.hide()
-            if not self._service_active():
-                self.pl_status.set_text(self.pl_status.get_text() + "\nThe background service is off, so nothing "
-                                        "will switch. Turn it on below.")
-        if st.get("current") != getattr(self, "_last_current", None):
-            self._last_current = st.get("current")
-            self._fill_playlist_items()
-        return True
+    # ------------------------------------------------- background service --
 
     @staticmethod
     def _service_active():
@@ -1425,7 +1103,10 @@ class Window(Gtk.ApplicationWindow):
         box.pack_start(_heading("Clock", 12), False, False, 0)
         box.pack_start(_row("Keyboard clock", _button("Set to this computer's time", None, self._sync_clock)),
                        False, False, 0)
-        box.pack_start(_dim("The background service (Playlists tab) keeps it right automatically."), False, False, 0)
+        self.svc_switch = Gtk.Switch(halign=Gtk.Align.START, active=self._service_active())
+        self.svc_switch.connect("notify::active", self._service_toggled)
+        box.pack_start(_row("Keep it in sync", self.svc_switch, "small background service, starts at login"),
+                       False, False, 0)
 
         box.pack_start(_heading("Backup", 12), False, False, 0)
         bb = Gtk.Box(spacing=8)

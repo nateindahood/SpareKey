@@ -41,7 +41,7 @@ def find_devices():
 
 
 class Device:
-    """Use as a context manager; holds a lock so the GUI and the playlist service never interleave."""
+    """Use as a context manager; holds a lock so the GUI and the clock service never interleave."""
 
     def __init__(self, path=None, verbose=False, wait=True):
         devs = find_devices()

@@ -2,15 +2,13 @@
 
 import json
 import os
-import random
 import sys
-import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from sparekey import keymap, store  # noqa: E402
+from sparekey import keymap  # noqa: E402
 from sparekey import protocol as P  # noqa: E402
 from sparekey.settings import Profile  # noqa: E402
 
@@ -64,26 +62,6 @@ class Settings(unittest.TestCase):
         self.assertEqual(p.led_param(9), {"brightness": 20, "speed": 2, "mix": True})
         p.effect = 18
         self.assertEqual(p.buf[9], 1)
-
-
-class Playlists(unittest.TestCase):
-    def test_loop_and_shuffle(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            files = []
-            for n in "abc":
-                path = os.path.join(tmp, n + ".gif")
-                open(path, "w").close()
-                files.append(path)
-            st = {}
-            loop = [store.next_item({"items": files}, st) for _ in range(4)]
-            self.assertEqual(loop, files + files[:1])
-            st, rng = {}, random.Random(1)
-            seen = [store.next_item({"items": files, "order": "shuffle"}, st, rng) for _ in range(9)]
-            for i in range(0, 9, 3):
-                self.assertEqual(sorted(seen[i:i + 3]), files)
-            self.assertTrue(all(a != b for a, b in zip(seen, seen[1:])))
-            os.remove(files[1])
-            self.assertNotIn(files[1], [store.next_item({"items": files}, {}) for _ in range(3)])
 
 
 if __name__ == "__main__":

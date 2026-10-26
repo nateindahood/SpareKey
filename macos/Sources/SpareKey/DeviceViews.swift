@@ -343,7 +343,8 @@ struct SettingsView: View {
             }
             Section("Clock") {
                 Button("Set the keyboard clock to this Mac's time") { model.syncClock() }
-                Text("The background service (Playlists tab) keeps it right automatically.").foregroundColor(.secondary)
+                Toggle("Keep it in sync (small background service, starts at login)", isOn: Binding(
+                    get: { Service.isInstalled }, set: { on in on ? model.installService() : model.uninstallService() }))
             }
             Section("Backup") {
                 HStack {

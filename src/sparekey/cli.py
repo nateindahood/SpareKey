@@ -190,29 +190,6 @@ def cmd_reset(a):
     return 0
 
 
-def cmd_playlist(a):
-    pls = store.playlists()
-    st = store.load_state()
-    if a.action == "list":
-        for name, pl in pls.items():
-            mark = "▶" if st.get("active") == name else " "
-            print("%s %s  (%d files, %s, every %d min)" % (mark, name, len(pl["items"]), pl["order"], pl["interval"]))
-        return 0
-    if a.action == "create":
-        store.save_playlist(a.name, [os.path.abspath(p) for p in a.files], a.order, a.interval, a.fit)
-    elif a.action == "start":
-        if a.name not in pls:
-            print("no playlist named %r" % a.name)
-            return 1
-        store.start_playlist(a.name)
-        print("started; the sparekey service uploads the first GIF within a few seconds")
-    elif a.action == "stop":
-        store.stop_playlist()
-    elif a.action == "delete":
-        store.delete_playlist(a.name)
-    return 0
-
-
 def cmd_service(a):
     from . import service
     service.main()
@@ -259,18 +236,9 @@ def main(argv=None):
     fr.add_argument("--yes", action="store_true")
     fr.set_defaults(func=cmd_reset)
 
-    pl = sub.add_parser("playlist", help="manage GIF playlists")
-    pl.add_argument("action", choices=["list", "create", "start", "stop", "delete"])
-    pl.add_argument("name", nargs="?")
-    pl.add_argument("files", nargs="*")
-    pl.add_argument("--order", choices=["loop", "shuffle"], default="loop")
-    pl.add_argument("--interval", type=int, default=store.DEFAULT_INTERVAL, help="minutes between GIFs")
-    pl.add_argument("--fit", choices=[f for f, _ in media.FITS], default="cover")
-    pl.set_defaults(func=cmd_playlist)
-
-    sub.add_parser("service", help="run the playlist/clock service (used by systemd)").set_defaults(func=cmd_service)
+    sub.add_parser("service", help="run the clock service (used by systemd)").set_defaults(func=cmd_service)
     g = sub.add_parser("gui", help="open the app")
-    g.add_argument("--page", choices=["screen", "playlists", "lighting", "keys", "macros", "settings"])
+    g.add_argument("--page", choices=["screen", "lighting", "keys", "macros", "settings"])
     g.set_defaults(func=cmd_gui)
 
     a = ap.parse_args(argv)

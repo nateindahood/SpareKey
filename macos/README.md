@@ -1,7 +1,7 @@
 # SpareKey for macOS
 
 Native SwiftUI version of SpareKey: the same features as the Linux app (screen
-library and upload, playlists with loop/shuffle, lighting, per-key colours, key
+library and upload, lighting, per-key colours, key
 remapping, macros, clock, backup/restore, factory reset), talking to the
 keyboard through IOKit. It needs no Python.
 
@@ -54,10 +54,10 @@ in `build-app.sh`) avoids this.
 
 ## Background service
 
-Turning on the background service (Playlists tab) installs a LaunchAgent,
+Turning on "Keep it in sync" (Settings → Clock) installs a LaunchAgent,
 `~/Library/LaunchAgents/io.github.nateindahood.sparekey.service.plist`. It runs
-`SpareKey --service` at login to switch playlist GIFs and keep the clock
-right. Its log is in `~/Library/Application Support/SpareKey/service.log`.
+`SpareKey --service` at login to keep the keyboard clock right. Its log is in
+`~/Library/Application Support/SpareKey/service.log`.
 If you move the app, turn the background service off and on again.
 
 ## First-run checklist
@@ -72,7 +72,6 @@ Plug in the cable, choose USB in the keyboard screen's settings menu, then:
 5. **Lighting**: change the brightness slider. The keyboard dims within half a second.
 6. **Screen**: send a small GIF (a few frames). The progress bar moves at about 13 s per frame, and the GIF plays on the keyboard.
 7. **Keys**: remap a spare key on the FN2 layer, then "Reset this layer".
-8. **Playlists**: make a 2-item playlist with a 15-minute interval, turn on the service, then Start. The first GIF is sent within ~15 s.
 
 Report anything that fails (with the error text) as an issue.
 

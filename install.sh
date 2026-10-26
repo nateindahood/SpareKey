@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install SpareKey for the current user (no pip needed):
-#   ./install.sh             install / update (GUI, CLI, udev rule, background service)
+#   ./install.sh             install / update (GUI, CLI, udev rule, clock service)
 #   ./install.sh --uninstall
 set -euo pipefail
 
@@ -60,8 +60,8 @@ fi
 cp "$HERE/packaging/sparekey.service" "$UNIT_DIR/"
 systemctl --user daemon-reload
 systemctl --user enable --now sparekey.service >/dev/null 2>&1 \
-    && echo "==> Background service enabled (playlists + clock)" \
-    || echo "Note: couldn't start sparekey.service; turn it on from the Playlists tab."
+    && echo "==> Clock service enabled (keeps the keyboard clock in sync)" \
+    || echo "Note: couldn't start sparekey.service; turn it on under Settings → Clock."
 systemctl --user try-restart sparekey.service 2>/dev/null || true
 
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "Note: add ~/.local/bin to your PATH";; esac

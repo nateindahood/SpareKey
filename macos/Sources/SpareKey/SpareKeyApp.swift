@@ -36,7 +36,6 @@ struct ContentView: View {
             }
             TabView {
                 ScreenView().tabItem { Text("Screen") }
-                PlaylistsView().tabItem { Text("Playlists") }
                 LightingView().tabItem { Text("Lighting") }
                 KeysView().tabItem { Text("Keys") }
                 MacrosView().tabItem { Text("Macros") }

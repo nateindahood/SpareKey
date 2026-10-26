@@ -9,7 +9,7 @@
 > [issue](https://github.com/nateindahood/SpareKey/issues) and include the output of `sparekey -v info`
 > (Linux) or `SpareKey --probe` (macOS).
 
-Screen GIFs, playlists, lighting, key remapping and macros for the **Royal Kludge
+Screen GIFs, lighting, key remapping and macros for the **Royal Kludge
 S98** keyboard on **Linux** and **macOS**, with no Windows software. It talks to
 the keyboard directly over USB HID.
 
@@ -17,16 +17,13 @@ the keyboard directly over USB HID.
 |---|---|---|
 | App | GTK 3 (`sparekey gui`) | SwiftUI (`macos/`) |
 | Keyboard access | hidraw + udev rule | IOKit (Input Monitoring permission) |
-| Background playlists + clock | systemd user service | LaunchAgent |
+| Background clock sync | systemd user service | LaunchAgent |
 | Status | tested on an S98 (US, fw 0001) | tested on an S98 (US, fw 0001) |
 
 ## What it does
 
 - **Screen**: a library folder of GIFs/images with drag and drop, an exact
   preview at 320×172, and upload with progress, an ETA and cancel.
-- **Playlists**: pick any GIFs from your library, put them in order, choose
-  play in order or shuffle, and set how often they switch (15 min and up). The
-  background service does the switching, even with the window closed.
 - **Lighting**: the 18 built-in effects (plus Off) with brightness, speed and
   colour or mixed colours, and per-key colours painted on a picture of the
   keyboard.
@@ -44,16 +41,15 @@ Before the first change, SpareKey saves your keyboard's original settings to
 unusable, so SpareKey doesn't flash. RK's web driver (drive.rkgaming.com)
 works in Chrome/Chromium once the udev rule is installed.
 
-**Limits of the keyboard:** it holds one animation (up to 60 frames) and
-receives about 13 s per frame. The keyboard sets that pace, not the app. A
-playlist therefore re-sends each GIF when it switches.
+**Limits of the keyboard:** it holds one animation at a time (up to 60 frames)
+and receives about 13 s per frame. The keyboard sets that pace, not the app.
 
 ## Install (Linux)
 
 ```sh
 git clone https://github.com/nateindahood/SpareKey && cd SpareKey
 sudo apt install python3-gi gir1.2-gtk-3.0 python3-pil   # usually already there
-./install.sh            # app + CLI, udev rule (asks for sudo), background service
+./install.sh            # app + CLI, udev rule (asks for sudo), clock service
 ```
 
 Then open **SpareKey** from the app menu. The keyboard must be connected by
@@ -63,8 +59,6 @@ cable with USB selected in the screen's settings menu (USB `258a:01af`).
 sparekey info                         # what's connected and how it's set up
 sparekey upload cat.gif --fit contain
 sparekey light --effect breathing --brightness 3 --color ff8800
-sparekey playlist create Chill a.gif b.gif --order shuffle --interval 30
-sparekey playlist start Chill
 sparekey backup / restore FILE / reset --yes / clock
 ```
 

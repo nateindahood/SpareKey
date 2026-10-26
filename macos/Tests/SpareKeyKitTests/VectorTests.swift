@@ -103,18 +103,4 @@ final class VectorTests: XCTestCase {
                                            overrides: [:]), Keymap.defaults(table: 1, layer: 0))
         XCTAssertEqual(Keymap.layout.count, 98)
     }
-
-    func testPlaylistOrder() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let files = ["a", "b", "c"].map { dir.appendingPathComponent("\($0).gif").path }
-        for f in files { FileManager.default.createFile(atPath: f, contents: Data()) }
-        var st = PlaylistState()
-        let loop = (0..<4).map { _ in Store.nextItem(Playlist(items: files), &st)! }
-        XCTAssertEqual(loop, files + [files[0]])
-        var st2 = PlaylistState()
-        let seen = (0..<9).map { _ in Store.nextItem(Playlist(items: files, order: "shuffle"), &st2)! }
-        for i in stride(from: 0, to: 9, by: 3) { XCTAssertEqual(Set(seen[i..<(i + 3)]), Set(files)) }
-        XCTAssertTrue(zip(seen, seen.dropFirst()).allSatisfy { $0 != $1 })
-    }
 }
