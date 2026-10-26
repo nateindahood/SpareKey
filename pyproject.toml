@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sparekey"
-version = "0.5.0"
+version = "0.5.1"
 description = "Screen GIFs, lighting, key remapping and macros for the Royal Kludge S98 keyboard on Linux and macOS"
 readme = "README.md"
 license = { text = "MIT" }
