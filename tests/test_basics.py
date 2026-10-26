@@ -65,8 +65,61 @@ class Keys(unittest.TestCase):
         merged = keymap.merged_matrix(1, 3, [0x900BA6E0] * 126)
         self.assertEqual(merged, keymap.DEFAULTS["mac"][3])
 
+    def test_unlisted_but_real_action_is_kept(self):
+        fn = list(keymap.DEFAULTS["win"][1])
+        fn[7] = 0x08091300   # the S98's FN+1: a lighting action that isn't in the vendor's key list
+        self.assertEqual(keymap.merged_matrix(0, 1, fn)[7], 0x08091300)
+
     def test_all_zero_read_is_ignored(self):
         self.assertEqual(keymap.merged_matrix(1, 0, [0] * 126), keymap.DEFAULTS["mac"][0])
+
+
+class Backups(unittest.TestCase):
+    def _write(self, tmp, **changes):
+        import json
+        data = {"version": 1, "profile": (bytes(126) + b"\x5a\xa5").hex(), "led_effects": bytes(420).hex(),
+                "key_colors": "", "macros": "", "keymatrix": {"0/0": keymap.DEFAULTS["win"][0]}}
+        data.update(changes)
+        path = os.path.join(tmp, "b.json")
+        with open(path, "w") as f:
+            json.dump(data, f)
+        return path
+
+    def test_good_backup_loads(self):
+        import tempfile
+        from sparekey import cli
+        with tempfile.TemporaryDirectory() as tmp:
+            b = cli.read_backup(self._write(tmp))
+            self.assertEqual(len(b["profile"]), 128)
+            self.assertIn((0, 0), b["layers"])
+
+    def test_damaged_backups_are_refused(self):
+        import tempfile
+        from sparekey import cli
+        bad = [{"profile": bytes(128).hex()},                       # no end marker
+               {"profile": "zz"},                                   # not hex
+               {"led_effects": bytes(10).hex()},                    # wrong size
+               {"keymatrix": {"0/0": [1, 2, 3]}},                   # short layer
+               {"keymatrix": {"5/0": keymap.DEFAULTS["win"][0]}},   # no such table
+               {"keymatrix": {"0/0": [2 ** 40] * 126}},             # not a key code
+               {"macros": bytes(5000).hex() + "01"}]                # too long
+        with tempfile.TemporaryDirectory() as tmp:
+            for change in bad:
+                with self.assertRaises(ValueError, msg=str(change)[:60]):
+                    cli.read_backup(self._write(tmp, **change))
+
+
+class Macros(unittest.TestCase):
+    def test_deleting_a_macro_fixes_keys(self):
+        from sparekey import cli
+        m = lambda n: keymap.macro_action(n)
+        cfg = {"macros": [{"name": "a", "steps": []}, {"name": "b", "steps": []}, {"name": "c", "steps": []}],
+               "keymap": {"0": {"0": {"10": m(0), "11": m(1), "12": m(2), "13": 0x04}}, "1": {"1": {"5": m(2)}}}}
+        changed = cli.delete_macro(cfg, 1)
+        self.assertEqual([x["name"] for x in cfg["macros"]], ["a", "c"])
+        self.assertEqual(cfg["keymap"]["0"]["0"], {"10": m(0), "12": m(1), "13": 0x04})   # b's key: default
+        self.assertEqual(cfg["keymap"]["1"]["1"], {"5": m(1)})
+        self.assertEqual(changed, {(0, 0), (1, 1)})
 
 
 class Settings(unittest.TestCase):

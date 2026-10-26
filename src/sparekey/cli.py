@@ -16,6 +16,13 @@ def _bar(done, total):
     print("\r  %3d%%  chunk %d/%d" % (done * 100 // total, done, total), end="", flush=True)
 
 
+def _frame_limit(text):
+    n = int(text)
+    if not 1 <= n <= P.MAX_FRAMES:
+        raise argparse.ArgumentTypeError("the S98 holds 1 to %d frames" % P.MAX_FRAMES)
+    return n
+
+
 def _optional(read, fallback):
     try:
         return read()
@@ -40,9 +47,7 @@ def backup(d, path=None):
             "macros": _optional(d.macros_blob, b"").hex()}
     if path is None:
         path = os.path.join(store.BACKUP_DIR, time.strftime("s98-%Y%m%d-%H%M%S.json"))
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=1)
+    store.write_private(path, data)   # macros can hold typed text: readable by you only
     return path
 
 
@@ -53,22 +58,99 @@ def ensure_first_backup(d):
         backup(d, first)
 
 
-def restore(d, path, keys=True):
-    with open(path) as f:
-        data = json.load(f)
-    d.set_profile(bytes.fromhex(data["profile"]))
-    d.set_led_effects(bytes.fromhex(data["led_effects"]))
-    # older backups and unreadable blocks: skip rather than write something that isn't a real copy
-    colors = bytes.fromhex(data["key_colors"])
-    if len(colors) == P.LED_COLORS_LEN and any(colors):
-        d.set_key_colors(colors)
-    if keys:
-        for tl, codes in data["keymatrix"].items():
+def read_backup(path):
+    """Load and check a backup file. Nothing from a damaged or edited file reaches the keyboard:
+    raises ValueError unless every block has the right size and the profile its end marker."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        profile = bytes.fromhex(data["profile"])
+        effects = bytes.fromhex(data["led_effects"])
+        colors = bytes.fromhex(data.get("key_colors", ""))
+        macros = bytes.fromhex(data.get("macros", "")).rstrip(b"\0")
+        layers = {}
+        for tl, codes in data.get("keymatrix", {}).items():
             t, l = map(int, tl.split("/"))
-            d.set_keymatrix(t, l, keymap.merged_matrix(t, l, codes))
-    blob = bytes.fromhex(data["macros"]).rstrip(b"\0")
-    if blob:
-        d.set_macros_blob(blob)
+            if t not in (0, 1) or l not in range(4) or len(codes) != P.KEYS \
+                    or not all(isinstance(c, int) and 0 <= c <= 0xFFFFFFFF for c in codes):
+                raise ValueError("key layer %s" % tl)
+            layers[(t, l)] = codes
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
+        raise ValueError("%s isn't a valid SpareKey backup (%s)" % (os.path.basename(path), e))
+    if len(profile) != P.PROFILE_LEN or profile[-2:] != b"\x5a\xa5":
+        raise ValueError("%s has a damaged lighting profile" % os.path.basename(path))
+    if len(effects) != P.LED_EFFECT_LEN or len(colors) not in (0, P.LED_COLORS_LEN) or len(macros) > P.MACRO_LEN:
+        raise ValueError("%s has a block of the wrong size" % os.path.basename(path))
+    return {"profile": profile, "effects": effects, "colors": colors, "layers": layers, "macros": macros}
+
+
+def restore(d, path, keys=True):
+    b = read_backup(path)   # checked completely before anything is written
+    d.set_profile(b["profile"])
+    cfg = store.load_config()
+    # unreadable blocks were saved empty (or all zero by older versions): skip rather than write
+    # something that isn't a real copy
+    if any(b["effects"]):
+        d.set_led_effects(b["effects"])
+    if any(b["colors"]):
+        d.set_key_colors(b["colors"])
+    if keys:
+        km = cfg.setdefault("keymap", {})
+        for (t, l), codes in b["layers"].items():
+            restored = keymap.merged_matrix(t, l, codes)
+            d.set_keymatrix(t, l, restored)
+            # what the keyboard now has becomes your saved key changes, so later edits build on it
+            base = keymap.merged_matrix(t, l, baseline(t, l))
+            changes = {str(i): v for i, v in enumerate(restored) if v != base[i]}
+            if changes:
+                km.setdefault(str(t), {})[str(l)] = changes
+            else:
+                km.get(str(t), {}).pop(str(l), None)
+    if b["macros"]:
+        d.set_macros_blob(b["macros"])
+        cfg["macros"] = keymap.decode_macros(b["macros"])
+    if any(b["colors"]):
+        cfg["key_colors"] = b["colors"].hex()
+    store.save_config(cfg)
+
+
+def factory_reset(d):
+    """Back up, reset, and only then forget what SpareKey kept about the old setup."""
+    backup(d)
+    d.factory_reset()
+    cfg = store.load_config()
+    for k in ("keymap", "macros", "key_colors"):
+        cfg.pop(k, None)
+    store.save_config(cfg)
+
+
+def delete_macro(cfg, number):
+    """Remove macro `number` (0-based) from the saved list and fix keys that point at macros by
+    position: keys on the deleted one go back to default, later ones move down by one.
+    Returns the (table, layer) pairs whose key changes were updated."""
+    macros = cfg.get("macros", [])
+    if 0 <= number < len(macros):
+        macros.pop(number)
+    changed = set()
+    for t, layers in cfg.get("keymap", {}).items():
+        for l, keys in layers.items():
+            for idx, action in list(keys.items()):
+                if action >> 24 != keymap.MACRO_TYPE:
+                    continue
+                n = action & 0xFFFF
+                if n == number:
+                    keys.pop(idx)
+                elif n > number:
+                    keys[idx] = keymap.macro_action(n - 1)
+                else:
+                    continue
+                changed.add((int(t), int(l)))
+    return changed
+
+
+def layers_using_macros(cfg):
+    return {(int(t), int(l)) for t, layers in cfg.get("keymap", {}).items() for l, keys in layers.items()
+            if any(a >> 24 == keymap.MACRO_TYPE for a in keys.values())}
 
 
 def key_overrides(cfg, table, layer):
@@ -182,10 +264,7 @@ def cmd_reset(a):
         return 1
     with Device() as d:
         ensure_first_backup(d)
-        d.factory_reset()
-    cfg = store.load_config()
-    cfg.pop("keymap", None)
-    store.save_config(cfg)
+        factory_reset(d)
     print("keyboard reset to factory settings")
     return 0
 
@@ -211,7 +290,7 @@ def main(argv=None):
     up.add_argument("image")
     up.add_argument("--fit", choices=[f for f, _ in media.FITS], default="cover")
     up.add_argument("--delay", type=int, help="ms per frame (default: from the GIF)")
-    up.add_argument("--max-frames", type=int, default=P.MAX_FRAMES)
+    up.add_argument("--max-frames", type=_frame_limit, default=P.MAX_FRAMES, metavar="1-%d" % P.MAX_FRAMES)
     up.add_argument("--preview", metavar="FILE")
     up.add_argument("--dry-run", action="store_true")
     up.set_defaults(func=cmd_upload)

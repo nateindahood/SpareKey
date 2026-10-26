@@ -12,7 +12,6 @@ import struct
 
 DATA = os.path.join(os.path.dirname(__file__), "data")
 LAYERS = ["Base", "FN", "FN2", "Tap"]
-TABLES = ["Windows", "Mac"]
 MACRO_TYPE = 3
 
 
@@ -30,6 +29,7 @@ NAMES = {}
 for _name, _value in CODES.items():
     NAMES.setdefault(_value, _name)
 DEFAULTS = {"win": _KM["defaults"]["win"], "mac": _KM["defaults"]["mac"]}
+TYPES = {v >> 24 for v in CODES.values()} | {0, MACRO_TYPE}
 KEYS_BY_INDEX = {k["index"]: k for k in LAYOUT["keys"] if k["w"] > 0}
 
 _PRETTY = {"L_": "Left ", "R_": "Right ", "NUM_": "Num ", "LED_": "Light ", "Fn1": "FN"}
@@ -75,11 +75,12 @@ def merged_matrix(table, layer, from_device=None, overrides=None):
     """Full 126-key map: vendor default, then the readable part from the keyboard, then the user's edits."""
     codes = list(DEFAULTS["mac" if table else "win"][layer])
     if from_device:
-        known = set(CODES.values()) | {0}
         head = from_device[:62]
         # the Mac table reads back as all zeros although it works: empty where the default isn't = no read
         unread = not any(head) and any(codes[:62])
-        if not unread and all(v in known or v >> 24 == MACRO_TYPE for v in head):
+        # Some layers read back as random memory. Real actions always have a known type byte, even ones
+        # missing from the vendor's key list (the S98's FN+1 is 0x08091300), so check types, not codes.
+        if not unread and all(v >> 24 in TYPES for v in head):
             codes[:62] = head
     for idx, action in (overrides or {}).items():
         codes[int(idx)] = action
@@ -88,7 +89,6 @@ def merged_matrix(table, layer, from_device=None, overrides=None):
 
 # ------------------------------------------------------------------- macros --
 
-ACTION_DOWN, ACTION_UP = 0, 1
 T_KEY, T_MODIFIER, T_MOUSE = 0, 1, 2
 MODIFIERS = {224: "Left Ctrl", 225: "Left Shift", 226: "Left Alt", 227: "Left Win",
              228: "Right Ctrl", 229: "Right Shift", 230: "Right Alt", 231: "Right Win"}

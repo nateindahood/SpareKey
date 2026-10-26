@@ -108,6 +108,9 @@ struct KeysView: View {
     @State private var layer = 0
     @State private var editing: Int?
     @State private var search = ""
+    @State private var pendingFN: PendingAssign?
+
+    struct PendingAssign: Identifiable { let id = UUID(); let index: Int; let action: UInt32? }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -129,6 +132,25 @@ struct KeysView: View {
         .padding()
         .sheet(item: Binding(get: { editing.map { KeyTarget(id: $0) } }, set: { editing = $0?.id })) { t in
             picker(for: t.id)
+        }
+        .alert(item: $pendingFN) { p in
+            Alert(title: Text("Remap the FN key?"),
+                  message: Text("Without FN you can't reach the FN layer (media keys, lighting, connection modes) "
+                                + "from the keyboard. You can undo this here any time."),
+                  primaryButton: .destructive(Text("Remap")) {
+                      model.assign(table: table, layer: layer, index: p.index, action: p.action)
+                  },
+                  secondaryButton: .cancel())
+        }
+    }
+
+    /// Taking FN off the base layer locks you out of the FN layer: ask first.
+    private func choose(_ index: Int, _ action: UInt32?) {
+        let fn = Keymap.codes["KEY_Fn1"]
+        if layer == 0, Keymap.defaults(table: table, layer: 0)[index] == fn, let a = action, a != fn {
+            pendingFN = PendingAssign(index: index, action: a)
+        } else {
+            model.assign(table: table, layer: layer, index: index, action: action)
         }
     }
 
@@ -163,8 +185,8 @@ struct KeysView: View {
             TextField("Search keys, media, lighting…", text: $search)
             List(shown, id: \.offset) { item in
                 Button(item.element.0) {
-                    model.assign(table: table, layer: layer, index: index, action: item.element.1)
                     editing = nil
+                    choose(index, item.element.1)
                     search = ""
                 }
                 .buttonStyle(.plain)
@@ -252,8 +274,7 @@ struct MacrosView: View {
 
     private func delete() {
         guard let i = selected, i < model.macros.count else { return }
-        model.macros.remove(at: i)
-        model.saveMacrosLocally()
+        model.deleteMacro(i)
         selected = model.macros.isEmpty ? nil : max(0, i - 1)
     }
 
@@ -408,7 +429,10 @@ struct SettingsView: View {
         panel.directoryURL = Store.backupDir
         panel.allowedContentTypes = [.json]
         if panel.runModal() == .OK, let url = panel.url {
-            model.run("Restoring backup…", { try Keyboard.restore($0, from: url) }) { _ in model.refresh() }
+            model.run("Restoring backup…", { try Keyboard.restore($0, from: url) }) { _ in
+                model.config = Store.loadConfig()
+                model.refresh()
+            }
         }
     }
 }

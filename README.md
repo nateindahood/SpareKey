@@ -44,6 +44,13 @@ works in Chrome/Chromium once the udev rule is installed.
 **Limits of the keyboard:** it holds one animation at a time (up to 60 frames)
 and receives about 13 s per frame. The keyboard sets that pace, not the app.
 
+**Why there are no playlists.** We built playlists for the first version, and they worked, but we
+took them out. The S98 holds only one animation at a time and receives it slowly
+(about 13 seconds per frame, set by the keyboard itself), so switching to the next GIF means
+sending it again: several minutes per switch, a busy screen while it receives, and a rewrite of the
+keyboard's flash memory every time. That's slow and wears the flash for little gain, so SpareKey
+keeps one GIF at a time, like the official app.
+
 ## Install (Linux)
 
 ```sh
@@ -52,7 +59,8 @@ sudo apt install python3-gi gir1.2-gtk-3.0 python3-pil   # usually already there
 ./install.sh            # app + CLI, udev rule (asks for sudo), clock service
 ```
 
-Then open **SpareKey** from the app menu. The keyboard must be connected by
+The udev rule only opens the keyboard's configuration interface, never the one that carries your
+typing. Then open **SpareKey** from the app menu. The keyboard must be connected by
 cable with USB selected in the screen's settings menu (USB `258a:01af`).
 
 ```sh

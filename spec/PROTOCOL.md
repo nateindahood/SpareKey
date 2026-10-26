@@ -60,7 +60,10 @@ only. Writers must merge with the vendor defaults (`src/sparekey/data/keymap.jso
 instead of writing back what they read. They must also build from the layout
 *before* the first change (SpareKey keeps it in `s98-original.json`), not from a
 fresh read: once a key is remapped, the keyboard reports the remap, and
-"default" would just write it back.
+"default" would just write it back. A read layer can be random memory instead of key codes (seen on the Mac
+table). Tell the two apart by the **type byte** of every action (`action >> 24`), not by looking codes
+up in the vendor's list: real layers contain actions the list doesn't have (the S98's FN+1 is
+`0x08091300`).
 
 **Unreadable blocks (firmware 0001):** per-key colours (0x86) and macros (0x85)
 answer with a bare header every time, so treat them as unknown, not as empty.

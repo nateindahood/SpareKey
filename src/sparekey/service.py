@@ -17,15 +17,17 @@ def log(*a):
 def main():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     log("SpareKey clock service started")
-    last_clock = 0
+    last_clock, last_error = 0, None
     while True:
         now = time.time()
         if now - last_clock >= CLOCK_EVERY:
             try:
                 with Device(wait=False) as d:   # never wait behind an upload from the app
                     d.sync_clock()
-                last_clock = now
+                last_clock, last_error = now, None
             except DeviceError as e:
-                if "busy" not in str(e) and "not found" not in str(e):
+                quiet = "busy" in str(e) or "not found" in str(e)
+                if not quiet and str(e) != last_error:   # say it once, not every 15 s
                     log("device:", e)
+                last_error = str(e)
         time.sleep(POLL)

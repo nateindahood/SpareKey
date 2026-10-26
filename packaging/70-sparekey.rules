@@ -1,3 +1,5 @@
-# Royal Kludge / SinoWealth keyboards (VID 258a): let the logged-in user open
-# the vendor HID interface (needed by sparekey, Chrome WebHID and Wine).
-KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="258a", MODE="0660", TAG+="uaccess"
+# Royal Kludge / SinoWealth keyboards (USB vendor 258a): let the logged-in user open the
+# configuration interfaces (needed by SpareKey and Chrome WebHID). Interface 0 carries your
+# keystrokes and is deliberately left alone, so nothing can read your typing through this rule.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="258a", IMPORT{builtin}="usb_id"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="258a", ENV{ID_USB_INTERFACE_NUM}=="0[1-9]", MODE="0660", TAG+="uaccess"

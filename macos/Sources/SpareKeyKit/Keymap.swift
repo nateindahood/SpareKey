@@ -24,7 +24,6 @@ public struct Macro: Codable, Hashable {
 /// Key codes, layout, defaults and macro encoding. Mirrors src/sparekey/keymap.py.
 public enum Keymap {
     public static let layers = ["Base", "FN", "FN2", "Tap"]
-    public static let tables = ["Windows", "Mac"]
     public static let macroType: UInt32 = 3
 
     struct KeymapFile: Decodable { let keycodes: [String: Int]; let defaults: [String: [[UInt32]]] }
@@ -62,6 +61,8 @@ public enum Keymap {
         return String(format: "0x%08x", action)
     }
 
+    static let types: Set<UInt32> = Set(codes.values.map { $0 >> 24 }).union([0, macroType])
+
     public static func macroAction(_ n: Int) -> UInt32 { macroType << 24 | UInt32(n) }
 
     public static let assignable: [(label: String, action: UInt32)] = codes
@@ -73,11 +74,12 @@ public enum Keymap {
     public static func mergedMatrix(table: Int, layer: Int, fromDevice: [UInt32]?, overrides: [Int: UInt32]) -> [UInt32] {
         var out = defaults(table: table, layer: layer)
         if let dev = fromDevice, dev.count >= 62 {
-            let known = Set(codes.values).union([0])
             let head = Array(dev[0..<62])
             // the Mac table reads back as all zeros although it works: empty where the default isn't = no read
             let unread = !head.contains { $0 != 0 } && out[0..<62].contains { $0 != 0 }
-            if !unread && head.allSatisfy({ known.contains($0) || $0 >> 24 == macroType }) {
+            // Some layers read back as random memory. Real actions always have a known type byte, even
+            // ones missing from the vendor's key list (the S98's FN+1 is 0x08091300), so check types.
+            if !unread && head.allSatisfy({ types.contains($0 >> 24) }) {
                 out.replaceSubrange(0..<62, with: head)
             }
         }

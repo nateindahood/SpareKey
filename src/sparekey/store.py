@@ -26,6 +26,23 @@ def _move_old_dirs():
 _move_old_dirs()
 
 
+def _make_private():
+    """Settings and backups can hold recorded macros: keep them readable by you only (older versions
+    created them readable by everyone who can reach your home folder)."""
+    for d in (CONFIG_DIR, BACKUP_DIR):
+        if os.path.isdir(d):
+            try:
+                os.chmod(d, 0o700)
+                for n in os.listdir(d):
+                    if n.endswith(".json"):
+                        os.chmod(os.path.join(d, n), 0o600)
+            except OSError:
+                pass
+
+
+_make_private()
+
+
 def _read(path, default):
     try:
         with open(path) as f:
@@ -34,12 +51,24 @@ def _read(path, default):
         return default
 
 
-def _write(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp")
-    with os.fdopen(fd, "w") as f:
-        json.dump(data, f, indent=1)
-    os.replace(tmp, path)
+def write_private(path, data):
+    """Write JSON readable by you only (0600), all at once: a crash never leaves half a file."""
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".tmp")   # mkstemp creates the file as 0600
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=1)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+_write = write_private
 
 
 def load_config():

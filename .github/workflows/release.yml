@@ -1,0 +1,41 @@
+# Tests both apps, and on a version tag builds the macOS disk image and attaches it to the release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to attach the .dmg to the release
+
+jobs:
+  linux-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y python3-pil
+      - run: python3 -m unittest discover -s tests -v
+
+  macos-dmg:
+    runs-on: macos-14
+    needs: linux-tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        working-directory: macos
+        run: swift test
+      - name: Build SpareKey.dmg (Apple Silicon + Intel)
+        working-directory: macos
+        env:
+          ARCH_FLAGS: --arch arm64 --arch x86_64
+        run: bash make-dmg.sh
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" macos/build/SpareKey-*.dmg --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpareKey-dmg
+          path: macos/build/SpareKey-*.dmg

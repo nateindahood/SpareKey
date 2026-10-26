@@ -14,11 +14,11 @@ EFFECTS = [  # (id, name, has_speed, has_brightness, has_colour)
     (18, "Custom (per key)", False, False, False), (0, "Off", False, False, False),
 ]
 EFFECT_IDS = {e[0]: e for e in EFFECTS}
-CUSTOM, OFF = 18, 0
+CUSTOM = 18
 
-# profile byte offsets
-F_DEBOUNCE, F_PARAM_TYPE, F_BRIGHTNESS, F_SPEED, F_COLOR = 3, 5, 6, 7, 8
-F_MODE_SELECTION, F_MODE, F_WINLOCK, F_WASD, F_TAP_DELAY, F_SLEEP = 9, 10, 15, 17, 22, 24
+# profile byte offsets (the full layout is in spec/PROTOCOL.md)
+F_BRIGHTNESS, F_SPEED = 6, 7
+F_MODE_SELECTION, F_MODE, F_WINLOCK, F_WASD, F_SLEEP = 9, 10, 15, 17, 24
 LED_PARAM_BASE = 56
 MIX = 7                      # colour index meaning "mix colours"
 BRIGHTNESS_LEVELS = [0, 4, 8, 12, 16, 20]   # hardware values for UI levels 0..5
@@ -128,7 +128,3 @@ class KeyColors:
 
     def set(self, index, rgb):
         self.buf[index], self.buf[index + P.KEYS], self.buf[index + 2 * P.KEYS] = rgb
-
-    def fill(self, rgb):
-        for i in range(P.KEYS):
-            self.set(i, rgb)

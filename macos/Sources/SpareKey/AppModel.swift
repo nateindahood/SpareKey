@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import Foundation
 import SpareKeyKit
 import SwiftUI
@@ -14,10 +15,12 @@ final class AppModel: ObservableObject {
     @Published var profile = Profile([UInt8](repeating: 0, count: S98.profileLength))
     @Published var effects = LedEffects([UInt8](repeating: 0, count: S98.ledEffectLength))
     @Published var keyColors = KeyColors([UInt8](repeating: 0, count: S98.ledColorsLength))
-    @Published var matrix: [String: [UInt32]] = [:]
     @Published var macros: [Macro] = []
 
     @Published var library: [URL] = []
+    /// Frame count and a small thumbnail per library file, worked out once (not on every redraw).
+    @Published var libraryInfo: [URL: LibraryItem] = [:]
+    struct LibraryItem { let frames: Int; let thumb: NSImage? }
     @Published var config = Store.loadConfig()
     @Published var uploadProgress: Double?
     @Published var uploadText = ""
@@ -33,7 +36,8 @@ final class AppModel: ObservableObject {
 
     // MARK: device plumbing
 
-    func run<T>(_ text: String?, _ body: @escaping (S98Device) throws -> T, done: ((T) -> Void)? = nil) {
+    func run<T>(_ text: String?, _ body: @escaping (S98Device) throws -> T, failed: (() -> Void)? = nil,
+                done: ((T) -> Void)? = nil) {
         busy = text
         if let t = text { status = t }
         DeviceQueue.shared.run(body) { [weak self] result in
@@ -46,6 +50,7 @@ final class AppModel: ObservableObject {
             case .failure(let e):
                 self.error = e.localizedDescription
                 self.status = ""
+                failed?()
             }
         }
     }
@@ -58,17 +63,19 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() {
-        run("Reading the keyboard…", { d -> (String, String, Profile, LedEffects, KeyColors, [String: [UInt32]], [Macro]) in
-            var m = [String: [UInt32]]()
-            for t in 0..<2 { for l in 0..<4 { m["\(t)/\(l)"] = try d.keymatrix(table: t, layer: l) } }
+        run("Reading the keyboard…", { d -> (String, String, Profile, LedEffects, KeyColors, [Macro]) in
             // per-key colours and macros often can't be read; show them empty rather than fail
-            let colors = (try? d.keyColors()) ?? KeyColors([UInt8](repeating: 0, count: S98.ledColorsLength))
-            return (d.model, try d.firmware(), try d.profile(), try d.ledEffects(), colors, m,
+            var colors = (try? d.keyColors()) ?? KeyColors([UInt8](repeating: 0, count: S98.ledColorsLength))
+            if !colors.buf.contains(where: { $0 != 0 }), let saved = Store.loadConfig().keyColors {
+                let b = Keyboard.unhex(saved)   // the keyboard can't report them: use the ones last sent from here
+                if b.count == S98.ledColorsLength { colors = KeyColors(b) }
+            }
+            return (d.model, try d.firmware(), try d.profile(), try d.ledEffects(), colors,
                     Keymap.decodeMacros((try? d.macrosBlob()) ?? []))
         }) { [weak self] r in
             guard let self = self else { return }
-            (self.model, self.firmware, self.profile, self.effects, self.keyColors, self.matrix, _) = r
-            self.macros = Store.loadConfig().macros ?? r.6
+            (self.model, self.firmware, self.profile, self.effects, self.keyColors, _) = r
+            self.macros = Store.loadConfig().macros ?? r.5
             self.connected = true
             self.status = "Connected."
         }
@@ -77,8 +84,15 @@ final class AppModel: ObservableObject {
     // MARK: library & upload
 
     func refreshLibrary() {
-        library = Store.library()
+        let urls = Store.library()
+        library = urls
         config = Store.loadConfig()
+        let known = libraryInfo
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var info = [URL: LibraryItem]()
+            for u in urls { info[u] = known[u] ?? LibraryItem(frames: Media.frameCount(u), thumb: thumbnail(u)) }
+            DispatchQueue.main.async { self?.libraryInfo = info }
+        }
     }
 
     func addFiles(_ urls: [URL]) {
@@ -91,6 +105,10 @@ final class AppModel: ObservableObject {
     }
 
     func upload(_ url: URL, fit: Fit) {
+        guard uploadProgress == nil else {
+            error = "An upload is already running. Wait for it to finish, or press Cancel."
+            return
+        }
         cancelUpload = false
         uploadProgress = 0
         uploadText = "Converting…"
@@ -105,7 +123,7 @@ final class AppModel: ObservableObject {
                     self?.uploadText = "Sending \(done * 100 / total)% — about \(minutes(left)) left"
                 }
             }, cancelled: { [weak self] in self?.cancelUpload ?? false })
-        }) { [weak self] _ in
+        }, failed: { [weak self] in self?.uploadProgress = nil; self?.uploadText = "" }) { [weak self] _ in
             self?.uploadText = "Sent \(name)"
             self?.uploadProgress = nil
         }
@@ -138,6 +156,7 @@ final class AppModel: ObservableObject {
 
     func sendKeyColors() {
         let c = keyColors
+        Store.update { $0.keyColors = Keyboard.hex(c.buf) }   // the keyboard can't report them back
         change("Sending per-key colours…") { try $0.setKeyColors(c) }
     }
 
@@ -169,10 +188,28 @@ final class AppModel: ObservableObject {
 
     func saveMacrosLocally() { let m = macros; Store.update { $0.macros = m } }
 
+    /// Delete a macro; keys that pointed at it go back to default and later macros move up.
+    func deleteMacro(_ i: Int) {
+        saveMacrosLocally()
+        var cfg = Store.loadConfig()
+        let changed = Keyboard.deleteMacro(&cfg, i)
+        Store.saveConfig(cfg)
+        config = cfg
+        macros = cfg.macros ?? []
+        if !changed.isEmpty {
+            status = "Keys using macro \(i + 1) went back to default; later macros moved up. Send macros to update the keyboard."
+        }
+    }
+
     func sendMacros() {
         do {
             let blob = try Keymap.encodeMacros(macros)
-            change("Sending \(macros.count) macro(s)…") { try $0.setMacrosBlob(blob) }
+            let layers = Keyboard.changedLayers(Store.loadConfig())
+            change("Sending \(macros.count) macro(s)…") { d in
+                try d.setMacrosBlob(blob)
+                // macro numbers may have moved: rewrite the keys that use them
+                for (t, l) in layers { try Keyboard.writeLayer(d, table: t, layer: l) }
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -191,9 +228,11 @@ final class AppModel: ObservableObject {
     func syncClock() { run("Setting the clock…", { try $0.syncClock() }) { [weak self] _ in self?.status = "Clock set." } }
 
     func factoryReset() {
-        Store.update { $0.keymap = [:] }
-        config = Store.loadConfig()
-        run("Factory reset…", { d in try Keyboard.backup(d); try d.factoryReset() }) { [weak self] _ in self?.refresh() }
+        run("Factory reset…", { d in try Keyboard.factoryReset(d) }) { [weak self] _ in
+            self?.config = Store.loadConfig()
+            self?.macros = []
+            self?.refresh()
+        }
     }
 
     // MARK: clock service
@@ -208,6 +247,15 @@ final class AppModel: ObservableObject {
     }
 
     func uninstallService() { Service.uninstall(); objectWillChange.send() }
+}
+
+/// A small first-frame thumbnail (decoding a whole GIF for a 64x36 picture is wasteful).
+func thumbnail(_ url: URL) -> NSImage? {
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                 kCGImageSourceThumbnailMaxPixelSize: 128, kCGImageSourceCreateThumbnailWithTransform: true]
+    guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+    return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
 }
 
 func minutes(_ seconds: Double) -> String {

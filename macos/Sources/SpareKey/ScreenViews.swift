@@ -54,10 +54,10 @@ struct FramePreview: View {
 }
 
 struct Thumb: View {
-    let url: URL
+    let image: NSImage?
     var body: some View {
         Group {
-            if let img = NSImage(contentsOf: url) {
+            if let img = image {
                 Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
             } else {
                 Image(systemName: "photo")
@@ -88,12 +88,13 @@ struct ScreenView: View {
                 List(selection: $selection) {
                     ForEach(model.library, id: \.self) { url in
                         HStack {
-                            Thumb(url: url)
+                            Thumb(image: model.libraryInfo[url]?.thumb)
                             Text(url.lastPathComponent).lineLimit(1)
                             Spacer()
-                            let n = Media.frameCount(url)
-                            Text("\(n) frame\(n == 1 ? "" : "s") · ~\(minutes(Media.estimateSeconds(n)))")
-                                .foregroundColor(.secondary)
+                            if let n = model.libraryInfo[url]?.frames {
+                                Text("\(n) frame\(n == 1 ? "" : "s") · ~\(minutes(Media.estimateSeconds(n)))")
+                                    .foregroundColor(.secondary)
+                            }
                             Button { model.upload(url, fit: fit) } label: { Image(systemName: "paperplane") }
                                 .help("Send to the keyboard")
                             Button { try? FileManager.default.trashItem(at: url, resultingItemURL: nil); model.refreshLibrary() }

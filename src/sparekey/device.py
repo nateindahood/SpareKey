@@ -10,7 +10,9 @@ from . import protocol as P
 
 VID = 0x258A
 PIDS = {0x01AF: "RK S98"}
-LOCK_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "sparekey-device.lock")
+LOCK_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR")
+                         or os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "sparekey"),
+                         "sparekey-device.lock")
 PACKET_GAP = 0.020         # the keyboard paces itself through its acks
 ACK_TIMEOUT = 2.0
 
@@ -59,6 +61,7 @@ class Device:
         return PIDS.get(self.pid, "RK keyboard")
 
     def __enter__(self):
+        os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
         self.lock = open(LOCK_PATH, "a")
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | (0 if self.wait else fcntl.LOCK_NB))
@@ -128,9 +131,10 @@ class Device:
                 rep = os.read(self.fd, 64)
             except BlockingIOError:
                 continue
-            if self.verbose:
-                print("IN ", rep.hex(" "))
             ok = P.parse_ack(rep)
+            # only the keyboard's replies (report 9): other reports on this interface carry key presses
+            if self.verbose and rep[:1] == bytes([P.REPORT_ID]):
+                print("IN ", rep.hex(" "))
             if ok is not None:
                 return ok
         return None
@@ -203,8 +207,9 @@ class Device:
 
     def upload(self, frames, delay_ms, progress=None, cancel=None, gap=PACKET_GAP):
         """frames: RGB565BE byte strings (P.FRAME_BYTES each). progress(done, total)."""
-        if not 1 <= len(frames) <= 255:
-            raise DeviceError("between 1 and 255 frames are needed")
+        if not 1 <= len(frames) <= P.MAX_FRAMES:
+            # the S98 has room for 60 frames; sending more could write past the animation's flash area
+            raise DeviceError("between 1 and %d frames are needed" % P.MAX_FRAMES)
         dev_delay = P.frame_delay(delay_ms)
         self._drain()
         self._set_feature(P.tft_ctrl(P.TFT_START, len(frames), dev_delay))

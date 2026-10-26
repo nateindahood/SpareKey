@@ -107,5 +107,8 @@ final class VectorTests: XCTestCase {
         XCTAssertEqual(Keymap.mergedMatrix(table: 1, layer: 0, fromDevice: [UInt32](repeating: 0, count: 126),
                                            overrides: [:]), Keymap.defaults(table: 1, layer: 0))
         XCTAssertEqual(Keymap.layout.count, 98)
+        var fn = Keymap.defaults(table: 0, layer: 1)
+        fn[7] = 0x08091300   // the S98's FN+1: a lighting action that isn't in the vendor's key list
+        XCTAssertEqual(Keymap.mergedMatrix(table: 0, layer: 1, fromDevice: fn, overrides: [:])[7], 0x08091300)
     }
 }

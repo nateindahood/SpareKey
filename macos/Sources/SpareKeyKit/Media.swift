@@ -25,6 +25,7 @@ public enum MediaError: Error, LocalizedError {
 /// GIFs and images -> 320x172 frames. Mirrors src/sparekey/media.py.
 public enum Media {
     public static let secondsPerFrame = 12.7
+    static let maxSourceFrames = 5000
     public static let extensions = ["gif", "png", "jpg", "jpeg", "webp", "bmp", "heic"]
 
     public struct Frames {
@@ -51,7 +52,7 @@ public enum Media {
     public static func load(_ url: URL, fit: Fit = .cover, maxFrames: Int = S98.maxFrames) throws -> Frames {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw MediaError.unreadable(url.lastPathComponent) }
         let count = CGImageSourceGetCount(src)
-        guard count > 0 else { throw MediaError.unreadable(url.lastPathComponent) }
+        guard count > 0, count <= maxSourceFrames else { throw MediaError.unreadable(url.lastPathComponent) }
         // the keyboard can't show a frame faster than it draws it: thin out fast GIFs to keep their speed
         let pick = S98.pickFrames((0..<count).map { delay(src, $0) }, maxFrames: maxFrames)
         let indices = pick.indices
@@ -110,10 +111,16 @@ public enum Media {
                                 space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
             ctx.draw(img, in: CGRect(x: 0, y: 0, width: W, height: H))
         }
-        var rgb = [UInt8]()
-        rgb.reserveCapacity(W * H * 3)
-        for i in stride(from: 0, to: rgba.count, by: 4) { rgb += [rgba[i], rgba[i + 1], rgba[i + 2]] }
-        return S98.rgb565be(rgb)
+        // straight to RGB565 big-endian, same formula as S98.rgb565be (no per-pixel arrays)
+        var out = [UInt8](repeating: 0, count: W * H * 2)
+        var j = 0
+        for i in stride(from: 0, to: rgba.count, by: 4) {
+            let v = UInt16(rgba[i] >> 3) << 11 | UInt16(rgba[i + 1] >> 2) << 5 | UInt16(rgba[i + 2] >> 3)
+            out[j] = UInt8(v >> 8)
+            out[j + 1] = UInt8(v & 0xFF)
+            j += 2
+        }
+        return out
     }
 
     public static func estimateSeconds(_ frames: Int) -> Double { Double(frames) * secondsPerFrame }

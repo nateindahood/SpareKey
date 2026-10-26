@@ -4,7 +4,7 @@ import IOKit.hid
 
 public enum DeviceError: Error, LocalizedError {
     case notFound, notPermitted, openFailed(Int32), io(String), noAnswer(UInt8), busy, cancelled, stalled(Int)
-    case outOfTurn(UInt8), emptyLayer(Int)
+    case outOfTurn(UInt8), emptyLayer(Int), badFrameCount(Int), badBackup(String)
 
     public var errorDescription: String? {
         switch self {
@@ -20,6 +20,8 @@ public enum DeviceError: Error, LocalizedError {
         case .stalled(let f): return "The keyboard stopped responding during the upload (frame \(f))."
         case .outOfTurn(let c): return "The keyboard kept answering out of turn (cmd \(c)). Try again, or replug it."
         case .emptyLayer(let n): return "Refusing to write a base layer with only \(n) keys set."
+        case .badFrameCount(let n): return "Between 1 and \(S98.maxFrames) frames are needed (got \(n))."
+        case .badBackup(let why): return "That isn't a valid SpareKey backup (\(why))."
         }
     }
 }
@@ -36,7 +38,6 @@ public final class S98Device {
     private let inputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
     private var acks = [[UInt8]]()
     private let ackLock = NSCondition()
-    private var runLoopThread: Thread?
     private var runLoop: CFRunLoop?
     public var verbose = false
 
@@ -71,22 +72,38 @@ public final class S98Device {
         startInputThread()
     }
 
-    deinit {
+    private var closed = false
+
+    /// Stop listening and release the keyboard. DeviceQueue calls this after every operation; without
+    /// it the input thread, the open connection and every report it received would stay around.
+    public func close() {
+        guard !closed else { return }
+        closed = true
         if let rl = runLoop {
+            IOHIDDeviceRegisterInputReportCallback(device, inputBuffer, 64, nil, nil)
             IOHIDDeviceUnscheduleFromRunLoop(device, rl, CFRunLoopMode.defaultMode.rawValue)
             CFRunLoopStop(rl)
         }
         IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone))
+        ackLock.lock()
+        acks.removeAll()
+        ackLock.unlock()
+    }
+
+    deinit {
+        close()
         inputBuffer.deallocate()
     }
 
     private func startInputThread() {
         let ready = DispatchSemaphore(value: 0)
-        let t = Thread { [weak self] in
-            guard let self = self else { return }
-            self.runLoop = CFRunLoopGetCurrent()
-            let ctx = Unmanaged.passUnretained(self).toOpaque()
-            IOHIDDeviceRegisterInputReportCallback(self.device, self.inputBuffer, 64, { ctx, _, _, _, reportID, report, length in
+        // The thread must not hold on to self: it runs until close() stops its run loop.
+        let device = self.device, buffer = self.inputBuffer
+        let ctx = Unmanaged.passUnretained(self).toOpaque()
+        let box = RunLoopBox()
+        let t = Thread {
+            box.loop = CFRunLoopGetCurrent()
+            IOHIDDeviceRegisterInputReportCallback(device, buffer, 64, { ctx, _, _, _, reportID, report, length in
                 guard let ctx = ctx else { return }
                 let me = Unmanaged<S98Device>.fromOpaque(ctx).takeUnretainedValue()
                 var bytes = Array(UnsafeBufferPointer(start: report, count: length))
@@ -94,18 +111,23 @@ public final class S98Device {
                 if bytes.first != UInt8(truncatingIfNeeded: reportID) { bytes.insert(UInt8(truncatingIfNeeded: reportID), at: 0) }
                 me.received(bytes)
             }, ctx)
-            IOHIDDeviceScheduleWithRunLoop(self.device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+            IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
             ready.signal()
             CFRunLoopRun()
         }
         t.name = "sparekey-hid-input"
         t.start()
-        runLoopThread = t
         ready.wait()
+        runLoop = box.loop
     }
 
+    private final class RunLoopBox { var loop: CFRunLoop? }
+
     private func received(_ report: [UInt8]) {
-        if verbose { print("IN ", report.map { String(format: "%02x", $0) }.joined(separator: " ")) }
+        // only the keyboard's replies (report 9): other reports on this interface carry key presses
+        if verbose && report.first == S98.reportID {
+            print("IN ", report.map { String(format: "%02x", $0) }.joined(separator: " "))
+        }
         ackLock.lock()
         acks.append(report)
         ackLock.signal()
@@ -218,6 +240,8 @@ public final class S98Device {
     /// frames: RGB565BE (S98.frameBytes each). progress(done, total) is called on the calling queue.
     public func upload(frames: [[UInt8]], delayMs: Int, progress: ((Int, Int) -> Void)? = nil,
                        cancelled: (() -> Bool)? = nil) throws {
+        // the S98 has room for 60 frames; sending more could write past the animation's flash area
+        guard (1...S98.maxFrames).contains(frames.count) else { throw DeviceError.badFrameCount(frames.count) }
         let devDelay = S98.frameDelay(delayMs)
         drain()
         try setFeature(S98.tftCtrl(.start, frames: frames.count, delayMs: devDelay))
@@ -271,6 +295,7 @@ public final class S98Device {
         }
         let d: S98Device
         do { d = try S98Device() } catch { print("open failed: \(error.localizedDescription)"); return }
+        defer { d.close() }
         d.verbose = true
         // read-only: every get command a few times; show the answer length, echoed header and how much is non-zero
         var gets: [(String, [UInt8])] = [("info", S98.getInfo()), ("profile", S98.getProfile()),
@@ -320,6 +345,7 @@ public final class DeviceQueue {
         defer { if fd >= 0 { close(fd) } }
         if fd >= 0 && flock(fd, LOCK_EX | (wait ? 0 : LOCK_NB)) != 0 { throw DeviceError.busy }
         let dev = try S98Device()
+        defer { dev.close() }
         return try body(dev)
     }
 }

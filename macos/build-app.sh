@@ -8,8 +8,10 @@ cd "$(dirname "$0")"
 # keep the bundled data in step with the Linux copy
 cp ../src/sparekey/data/keymap.json ../src/sparekey/data/layout_s98.json Sources/SpareKeyKit/Data/
 
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)"
+# ARCH_FLAGS="--arch arm64 --arch x86_64" builds one app for Apple Silicon and Intel Macs (used by CI)
+ARCH_FLAGS="${ARCH_FLAGS:-}"
+swift build -c release $ARCH_FLAGS
+BIN="$(swift build -c release $ARCH_FLAGS --show-bin-path)"
 APP=build/SpareKey.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

@@ -9,6 +9,16 @@ keyboard through IOKit. It needs no Python.
 > both key layouts). The protocol code is also checked against the Linux
 > version's test vectors (`swift test`).
 
+## Install
+
+1. Download `SpareKey-<version>.dmg` from the [releases page](https://github.com/nateindahood/SpareKey/releases),
+   open it, and drag **SpareKey** onto **Applications**.
+2. The first time, macOS says it can't verify SpareKey: it isn't signed with a paid Apple Developer
+   ID. On macOS 15 or later, open **System Settings → Privacy & Security** and click **Open Anyway**
+   next to SpareKey. On older versions, right-click SpareKey in Applications and choose **Open**.
+   You only do this once.
+3. Allow SpareKey under **Input Monitoring** when macOS asks (see Permissions below).
+
 ## Build
 
 Requires macOS 13+ and the Xcode command line tools (`xcode-select --install`).
@@ -20,7 +30,8 @@ swift test                    # protocol tests against ../spec/vectors (no keybo
 open build/SpareKey.app
 ```
 
-`./build-app.sh --install` also copies the app to /Applications.
+`./build-app.sh --install` also copies the app to /Applications, and `bash make-dmg.sh` makes
+`build/SpareKey-<version>.dmg` for a release.
 
 ## Permissions
 

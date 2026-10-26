@@ -5,8 +5,9 @@ public struct Config: Codable {
     public var fit: Fit?
     public var keymap: [String: [String: [String: UInt32]]] = [:]   // table -> layer -> key index -> action
     public var macros: [Macro]?
+    public var keyColors: String?   // hex; the keyboard can't report per-key colours back
     public init() {}
-    enum CodingKeys: String, CodingKey { case libraryDir = "library_dir", fit, keymap, macros }
+    enum CodingKeys: String, CodingKey { case libraryDir = "library_dir", fit, keymap, macros, keyColors = "key_colors" }
 
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -14,6 +15,7 @@ public struct Config: Codable {
         fit = try c.decodeIfPresent(Fit.self, forKey: .fit)
         keymap = try c.decodeIfPresent([String: [String: [String: UInt32]]].self, forKey: .keymap) ?? [:]
         macros = try c.decodeIfPresent([Macro].self, forKey: .macros)
+        keyColors = try c.decodeIfPresent(String.self, forKey: .keyColors)
     }
 
     public func overrides(table: Int, layer: Int) -> [Int: UInt32] {
@@ -35,8 +37,29 @@ public enum Store {
             try? FileManager.default.moveItem(at: old, to: d)
         }
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        makePrivate(d)
         return d
     }()
+
+    /// Settings and backups can hold recorded macros: readable by you only (folders 0700, files 0600).
+    static func makePrivate(_ d: URL) {
+        let fm = FileManager.default
+        for dir in [d, d.appendingPathComponent("backups", isDirectory: true)] where fm.fileExists(atPath: dir.path) {
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+            for n in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where n.hasSuffix(".json") {
+                try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: dir.appendingPathComponent(n).path)
+            }
+        }
+    }
+
+    /// Write readable by you only, all at once (a crash never leaves half a file).
+    public static func writePrivate(_ data: Data, to url: URL) throws {
+        let folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
     public static var configURL: URL { dir.appendingPathComponent("config.json") }
     public static var backupDir: URL { dir.appendingPathComponent("backups", isDirectory: true) }
 
@@ -48,7 +71,7 @@ public enum Store {
     static func write<T: Encodable>(_ url: URL, _ value: T) {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(value) { try? data.write(to: url, options: .atomic) }
+        if let data = try? enc.encode(value) { try? writePrivate(data, to: url) }
     }
 
     public static func loadConfig() -> Config { read(configURL, Config()) }

@@ -55,6 +55,7 @@ if ! cmp -s "$HERE/packaging/70-sparekey.rules" "$RULE" 2>/dev/null || $have_old
     for r in $OLD_RULES; do [ -f "$r" ] && sudo rm -f "$r"; done
     sudo udevadm control --reload
     sudo udevadm trigger --subsystem-match=hidraw
+    echo "    Unplug and replug the keyboard once so the new rule fully applies."
 fi
 
 cp "$HERE/packaging/sparekey.service" "$UNIT_DIR/"

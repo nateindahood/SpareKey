@@ -24,6 +24,7 @@ from .settings import (BRIGHTNESS_LEVELS, CUSTOM, EFFECT_IDS, EFFECTS, KeyColors
 SERVICE = "sparekey.service"
 CACHE_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "sparekey", "previews")
 PREVIEW_SCALE = 1.4
+PREVIEW_VERSION = "2-%d" % P.DRAW_MS   # bump when frame picking changes, so old previews aren't reused
 MAX_MACROS = 16
 
 
@@ -44,6 +45,8 @@ class Worker:
                     result, error = fn(), None
                 except (DeviceError, media.MediaError, ValueError, OSError) as e:
                     result, error = None, str(e)
+                except Exception as e:   # anything unexpected still ends the operation with a message
+                    result, error = None, "Unexpected error (%s): %s" % (type(e).__name__, e)
             GLib.idle_add(self._finish, done, result, error)
 
         threading.Thread(target=target, daemon=True).start()
@@ -254,6 +257,8 @@ class Window(Gtk.ApplicationWindow):
         self.kb = None
         self._loading = False
         self.cancel_upload = False
+        self.uploading = False
+        self.macros = store.load_config().get("macros", [])
 
         hb = Gtk.HeaderBar(show_close_button=True, title="SpareKey")
         self.set_titlebar(hb)
@@ -338,7 +343,6 @@ class Window(Gtk.ApplicationWindow):
                         "effects": LedEffects(d.led_effects()),
                         # per-key colours and macros often can't be read; show them empty rather than fail
                         "colors": KeyColors(cli._optional(d.key_colors, bytes(P.LED_COLORS_LEN))),
-                        "matrix": {(t, l): d.keymatrix(t, l) for t in (0, 1) for l in range(4)},
                         "macros": keymap.decode_macros(cli._optional(d.macros_blob, b""))}
 
         self.run(load, self._apply_state, "Reading the keyboard…")
@@ -346,6 +350,12 @@ class Window(Gtk.ApplicationWindow):
     def _apply_state(self, kb):
         self.kb = kb
         self.infobar.hide()
+        saved = store.load_config().get("key_colors")
+        if not any(kb["colors"].buf) and saved:
+            try:   # the keyboard can't report them: use the ones last sent from here
+                kb["colors"] = KeyColors(bytes.fromhex(saved))
+            except (ValueError, AssertionError):
+                pass
         self.header.set_subtitle("%s · firmware %s" % (kb["model"], kb["info"]["firmware"]))
         cfg = store.load_config()
         if "macros" in cfg:
@@ -453,7 +463,9 @@ class Window(Gtk.ApplicationWindow):
         row = Gtk.ListBoxRow()
         row.path = path
         box = Gtk.Box(spacing=8, margin=4)
-        thumb = Gtk.Image.new_from_pixbuf(_thumb(path)) if _thumb(path) else Gtk.Image.new_from_icon_name("image-missing", Gtk.IconSize.BUTTON)
+        pix = _thumb(path)
+        thumb = Gtk.Image.new_from_pixbuf(pix) if pix else Gtk.Image.new_from_icon_name("image-missing",
+                                                                                         Gtk.IconSize.BUTTON)
         box.pack_start(thumb, False, False, 0)
         lab = Gtk.Label(label=os.path.basename(path), xalign=0, ellipsize=3)
         lab.set_tooltip_text(path)
@@ -551,7 +563,8 @@ class Window(Gtk.ApplicationWindow):
         def target():
             try:
                 st = os.stat(path)
-                key = hashlib.sha1(("%s|%d|%d|%s" % (path, st.st_size, int(st.st_mtime), fit)).encode()).hexdigest()[:16]
+                key = hashlib.sha1(("%s|%d|%d|%s|%s" % (path, st.st_size, int(st.st_mtime), fit,
+                                                         PREVIEW_VERSION)).encode()).hexdigest()[:16]
                 out = os.path.join(CACHE_DIR, key + ".gif")
                 if not os.path.exists(out):
                     os.makedirs(CACHE_DIR, exist_ok=True)
@@ -592,6 +605,10 @@ class Window(Gtk.ApplicationWindow):
         self._upload(path)
 
     def _upload(self, path):
+        if self.uploading:
+            self.show_error("An upload is already running. Wait for it to finish, or press Cancel.")
+            return
+        self.uploading = True
         fit = self.fit_combo.get_active_id()
         self.cancel_upload = False
         self.progress.set_fraction(0)
@@ -615,20 +632,20 @@ class Window(Gtk.ApplicationWindow):
             return os.path.basename(path)
 
         def done(name):
+            self._upload_ok = True
             self.progress.set_text("Sent %s" % name)
             GLib.timeout_add_seconds(4, lambda: self.progress_box.hide() or False)
 
-        def finish(_r=None):
-            self.send_btn.set_sensitive(True)
+        self._upload_ok = False
+        self.worker.run(op, done, "Sending %s…" % os.path.basename(path))
+        GLib.timeout_add(500, self._watch_upload)
 
-        self.worker.run(op, lambda r: (finish(), done(r)), "Sending %s…" % os.path.basename(path))
-        GLib.timeout_add(500, self._watch_send_btn)
-
-    def _watch_send_btn(self):
+    def _watch_upload(self):
         if self.worker.lock.locked():
             return True
+        self.uploading = False
         self.send_btn.set_sensitive(True)
-        if self.cancel_upload:
+        if not self._upload_ok:   # failed or cancelled: the error bar explains it
             self.progress_box.hide()
         return False
 
@@ -777,7 +794,9 @@ class Window(Gtk.ApplicationWindow):
         if send_color:
             fx.set_color(eid, _rgb(self.fx_color.get_rgba()))
             if self.fx_mix.get_active():
-                self.fx_mix.set_active(False)     # picking a colour means "use this colour"
+                self._loading = True              # picking a colour means "use this colour"
+                self.fx_mix.set_active(False)
+                self._loading = False
                 prof.set_led_param(eid, mix=False)
         pbuf, fbuf = bytes(prof), bytes(fx)
 
@@ -815,6 +834,7 @@ class Window(Gtk.ApplicationWindow):
 
     def _send_key_colors(self):
         buf = bytes(self.kb["colors"])
+        store.update_config(key_colors=buf.hex())   # the keyboard can't report them back
         self._change(lambda d: d.set_key_colors(buf), "Sending per-key colours…")
 
     # --------------------------------------------------------------- keys --
@@ -893,6 +913,16 @@ class Window(Gtk.ApplicationWindow):
         search.grab_focus()
 
     def _assign_key(self, t, l, index, action):
+        fn = keymap.CODES.get("KEY_Fn1")
+        if l == 0 and keymap.DEFAULTS["mac" if t else "win"][0][index] == fn and action not in (None, fn):
+            dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                                    buttons=Gtk.ButtonsType.OK_CANCEL, text="Remap the FN key?")
+            dlg.format_secondary_text("Without FN you can't reach the FN layer (media keys, lighting, "
+                                      "connection modes) from the keyboard. You can undo this here any time.")
+            resp = dlg.run()
+            dlg.destroy()
+            if resp != Gtk.ResponseType.OK:
+                return
         cfg = store.load_config()
         layer = cfg.setdefault("keymap", {}).setdefault(str(t), {}).setdefault(str(l), {})
         if action is None:
@@ -1022,9 +1052,17 @@ class Window(Gtk.ApplicationWindow):
         row = self.macro_list.get_selected_row()
         if row is None:
             return
-        self.macros.pop(row.get_index())
+        i = row.get_index()
         self._save_macros_local()
-        self._fill_macros(max(0, row.get_index() - 1))
+        cfg = store.load_config()
+        changed = cli.delete_macro(cfg, i)
+        store.save_config(cfg)
+        self.macros = cfg.get("macros", [])
+        self._fill_macros(max(0, i - 1))
+        self._draw_keys()
+        if changed:
+            self.status.set_text("Keys using macro %d went back to default; later macros moved up. Press "
+                                 "“Send macros to keyboard” to update the keyboard." % (i + 1))
 
     def _rename_macro(self, entry):
         m = self._current_macro()
@@ -1083,7 +1121,16 @@ class Window(Gtk.ApplicationWindow):
         except ValueError as e:
             self.show_error(str(e))
             return
-        self._change(lambda d: d.set_macros_blob(blob), "Sending %d macro(s)…" % len(self.macros))
+        cfg = store.load_config()
+        layers = cli.layers_using_macros(cfg) | {(int(t), int(l)) for t, ls in cfg.get("keymap", {}).items()
+                                                  for l in ls}
+
+        def op(d):
+            d.set_macros_blob(blob)
+            for t, l in sorted(layers):   # macro numbers may have moved: rewrite the keys that use them
+                cli.write_layer(d, t, l)
+
+        self._change(op, "Sending %d macro(s)…" % len(self.macros))
 
     # ----------------------------------------------------------- settings --
 
@@ -1195,13 +1242,12 @@ class Window(Gtk.ApplicationWindow):
         if resp != Gtk.ResponseType.OK:
             return
 
-        def op(d):
-            cli.backup(d)
-            d.factory_reset()
-        cfg = store.load_config()
-        cfg.pop("keymap", None)
-        store.save_config(cfg)
-        self._change(op, "Factory reset…", lambda _r: self.refresh())
+        def done(_r):
+            self.macros = []
+            self._fill_macros()
+            self.refresh()
+
+        self._change(cli.factory_reset, "Factory reset…", done)
 
 
 class App(Gtk.Application):
