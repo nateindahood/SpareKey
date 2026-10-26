@@ -52,7 +52,7 @@ profile read was written back with a brightness change, turning the lighting off
 Answer lengths: macOS (IOKit) reports the real length the keyboard sent; Linux
 `HIDIOCGFEATURE` pads the buffer, but the ioctl's return value is the real length
 (report ID included). Seen with firmware 0001: info 17 data bytes, profile 135,
-effect colours 171 (all zero), key matrix 255.
+effect colors 171 (all zero), key matrix 255.
 
 **Read limit:** with firmware 0001, only about the first 248 data bytes of
 an answer are real (the answer is cut off there). Key matrices therefore show keys 0–61
@@ -65,9 +65,9 @@ table). Tell the two apart by the **type byte** of every action (`action >> 24`)
 up in the vendor's list: real layers contain actions the list doesn't have (the S98's FN+1 is
 `0x08091300`).
 
-**Unreadable blocks (firmware 0001):** per-key colours (0x86) and macros (0x85)
+**Unreadable blocks (firmware 0001):** per-key colors (0x86) and macros (0x85)
 answer with a bare header every time, so treat them as unknown, not as empty.
-Effect colours (0x8a) read back as zeros. The Mac table (table 1) reads as all
+Effect colors (0x8a) read back as zeros. The Mac table (table 1) reads as all
 zeros (base layer) or random memory (FN layers) even though Mac mode types
 normally: a key layer that reads as all zeros where the vendor default isn't
 empty is a failed read, and backups keep a layer only if two reads agree.
@@ -82,10 +82,10 @@ clock with `0a 06 01 01`. Wait for the ack before sending the next packet.
 | 0x82 (130) | get info | arg1 = 1, len 10 | answer data[15..16] = firmware version bytes |
 | 0x84 (132) | get profile | arg2 = profile | 128 bytes |
 | 0x04 | set profile | arg2 = profile | 128 bytes |
-| 0x8a (138) | get effect colours | arg2 = profile | 420 bytes |
-| 0x0a (10) | set effect colours | arg2 = profile | 420 bytes |
-| 0x86 (134) | get per-key colours | arg2 = profile | 378 bytes |
-| 0x06 | set per-key colours | arg2 = profile | 378 bytes |
+| 0x8a (138) | get effect colors | arg2 = profile | 420 bytes |
+| 0x0a (10) | set effect colors | arg2 = profile | 420 bytes |
+| 0x86 (134) | get per-key colors | arg2 = profile | 378 bytes |
+| 0x06 | set per-key colors | arg2 = profile | 378 bytes |
 | 0x83 (131) | get key matrix | arg1 = table << 2 \| layer | 504 bytes |
 | 0x03 | set key matrix | arg1 = table << 2 \| layer | 504 bytes |
 | 0x85 (133) | get macros | index = chunk 0–7 | 512 bytes |
@@ -101,7 +101,7 @@ clock with `0a 06 01 01`. Wait for the ack before sending the next packet.
 |---|---|
 | 3 | debounce |
 | 5 | LED parameter type (0 = per-effect parameters below) |
-| 6, 7, 8 | global brightness, speed, colour (used when byte 5 ≠ 0) |
+| 6, 7, 8 | global brightness, speed, color (used when byte 5 ≠ 0) |
 | 9 | 1 when effect = Custom |
 | 10 | effect (see list) |
 | 15 | Windows-key lock |
@@ -109,21 +109,21 @@ clock with `0a 06 01 01`. Wait for the ack before sending the next packet.
 | 22 | tap delay |
 | 24 | sleep timeout, in 30 s steps (0 = never) |
 | 56 + 2·effect | brightness: 0, 4, 8, 12, 16, 20 (levels 0–5) |
-| 57 + 2·effect | `speed << 4 \| colour`; speed 0–4; colour 7 = mixed colours, 0 = use the effect colour |
+| 57 + 2·effect | `speed << 4 \| color`; speed 0–4; color 7 = mixed colors, 0 = use the effect color |
 | 126, 127 | `5a a5` |
 
 Effects: 0 off, 1 static, 2 breathing, 3 rainbow, 4 flash away, 5 raindrops,
 6 rainbow wheel, 7 ripple shining, 8 stars twinkle, 9 shadow disappear,
 10 retro snake, 11 neon stream, 12 reaction, 13 sine wave, 14 side scan,
-15 rotating windmill, 16 colourful waterfall, 17 blossoming, 18 custom (per key).
+15 rotating windmill, 16 colorful waterfall, 17 blossoming, 18 custom (per key).
 
-### Effect colours (420 bytes)
+### Effect colors (420 bytes)
 
-20 effects × 21 bytes (7 RGB triples). The first triple is the colour used
-when "mixed colours" is off. Change only the selected effect's first triple
+20 effects × 21 bytes (7 RGB triples). The first triple is the color used
+when "mixed colors" is off. Change only the selected effect's first triple
 and write back the rest as read.
 
-### Per-key colours (378 bytes)
+### Per-key colors (378 bytes)
 
 Planar layout: 126 red bytes, then 126 green, then 126 blue, indexed by key
 matrix position.

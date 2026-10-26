@@ -1,8 +1,8 @@
-"""Typed views over the keyboard's profile, lighting and per-key colour blocks."""
+"""Typed views over the keyboard's profile, lighting and per-key color blocks."""
 
 from . import protocol as P
 
-EFFECTS = [  # (id, name, has_speed, has_brightness, has_colour)
+EFFECTS = [  # (id, name, has_speed, has_brightness, has_color)
     (1, "Static", False, True, True), (2, "Breathing", True, True, True), (3, "Rainbow", True, True, False),
     (4, "Flash away", True, True, True), (5, "Raindrops", True, True, True),
     (6, "Rainbow wheel", True, True, False), (7, "Ripple shining", True, True, True),
@@ -10,17 +10,38 @@ EFFECTS = [  # (id, name, has_speed, has_brightness, has_colour)
     (10, "Retro snake", True, True, True), (11, "Neon stream", True, True, True),
     (12, "Reaction", True, True, True), (13, "Sine wave", True, True, True),
     (14, "Side scan", True, True, True), (15, "Rotating windmill", True, True, True),
-    (16, "Colourful waterfall", True, True, False), (17, "Blossoming", True, True, True),
+    (16, "Colorful waterfall", True, True, False), (17, "Blossoming", True, True, True),
     (18, "Custom (per key)", False, False, False), (0, "Off", False, False, False),
 ]
 EFFECT_IDS = {e[0]: e for e in EFFECTS}
+EFFECT_INFO = {  # what each effect looks like (shown under the effect"s settings)
+    1: "Every key stays lit in one color.",
+    2: "All keys slowly fade in and out.",
+    3: "A rainbow sweeps across the keyboard.",
+    4: "Reacts to typing: light bursts out from each key you press and fades away.",
+    5: "Random keys light up and fade, like raindrops.",
+    6: "A rainbow turns around the keyboard like a wheel.",
+    7: "Reacts to typing: each key you press sends a ripple of light outward.",
+    8: "Random keys twinkle on and off like stars.",
+    9: "Listed by RK, but on the S98 it looks the same as Static, even while typing.",
+    10: "A short trail of light snakes around the keyboard.",
+    11: "Colors flow smoothly across the keyboard.",
+    12: "Reacts to typing: keys light up as you press them.",
+    13: "A wave of light rolls across the keyboard.",
+    14: "A band of light sweeps from side to side.",
+    15: "Light turns around the keyboard like windmill blades.",
+    16: "Colors pour down the keyboard like a waterfall.",
+    17: "Light blooms outward from the middle of the keyboard.",
+    18: "Each key shows the color you paint for it below.",
+    0: "All lighting is off.",
+}
 CUSTOM = 18
 
 # profile byte offsets (the full layout is in spec/PROTOCOL.md)
 F_BRIGHTNESS, F_SPEED = 6, 7
 F_MODE_SELECTION, F_MODE, F_WINLOCK, F_WASD, F_SLEEP = 9, 10, 15, 17, 24
 LED_PARAM_BASE = 56
-MIX = 7                      # colour index meaning "mix colours"
+MIX = 7                      # color index meaning "mix colors"
 BRIGHTNESS_LEVELS = [0, 4, 8, 12, 16, 20]   # hardware values for UI levels 0..5
 SPEED_MAX = 4
 SLEEP_STEP_S = 30
@@ -94,7 +115,7 @@ class Profile:
 
 
 class LedEffects:
-    """Per-effect RGB colour (first 3 of every 21 bytes)."""
+    """Per-effect RGB color (first 3 of every 21 bytes)."""
 
     def __init__(self, buf):
         assert len(buf) == P.LED_EFFECT_LEN
@@ -114,7 +135,7 @@ class LedEffects:
 
 
 class KeyColors:
-    """Per-key colours for the Custom effect, stored planar (R[126] G[126] B[126])."""
+    """Per-key colors for the Custom effect, stored planar (R[126] G[126] B[126])."""
 
     def __init__(self, buf):
         assert len(buf) == P.LED_COLORS_LEN

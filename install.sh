@@ -9,11 +9,12 @@ LIB="${XDG_DATA_HOME:-$HOME/.local/share}/sparekey"
 BIN="$HOME/.local/bin/sparekey"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ICONS="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
 RULE="/etc/udev/rules.d/70-sparekey.rules"
 
 if [ "${1:-}" = "--uninstall" ]; then
     systemctl --user disable --now sparekey.service 2>/dev/null || true
-    rm -f "$UNIT_DIR/sparekey.service" "$BIN" "$APPS/sparekey.desktop"
+    rm -f "$UNIT_DIR/sparekey.service" "$BIN" "$APPS/sparekey.desktop" "$ICONS"/*/apps/sparekey.png
     rm -rf "$LIB"
     [ -f "$RULE" ] && sudo rm -f "$RULE" && sudo udevadm control --reload
     echo "sparekey uninstalled (settings in ~/.config/sparekey and your library were kept)."
@@ -45,6 +46,11 @@ EOF
 chmod +x "$BIN"
 sed "s|^Exec=sparekey|Exec=$BIN|" "$HERE/packaging/sparekey.desktop" >"$APPS/sparekey.desktop"
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" 2>/dev/null || true
+for f in "$HERE"/packaging/icons/hicolor/*/apps/sparekey.png; do
+    size="$(basename "$(dirname "$(dirname "$f")")")"
+    install -Dm0644 "$f" "$ICONS/$size/apps/sparekey.png"
+done
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -qtf "$ICONS" 2>/dev/null || true
 
 OLD_RULES="/etc/udev/rules.d/70-rk-keyboard.rules /etc/udev/rules.d/70-keyframe.rules"   # earlier names
 have_old=false

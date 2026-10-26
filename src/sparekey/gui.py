@@ -18,7 +18,7 @@ from . import __version__, cli, keymap, media, store  # noqa: E402
 from . import protocol as P  # noqa: E402
 from .device import Device, DeviceError, find_devices  # noqa: E402
 from .hid_keys import EVDEV_TO_HID  # noqa: E402
-from .settings import (BRIGHTNESS_LEVELS, CUSTOM, EFFECT_IDS, EFFECTS, KeyColors,  # noqa: E402
+from .settings import (BRIGHTNESS_LEVELS, CUSTOM, EFFECT_IDS, EFFECT_INFO, EFFECTS, KeyColors,  # noqa: E402
                        LedEffects, Profile)
 
 SERVICE = "sparekey.service"
@@ -92,6 +92,20 @@ def _dim(text, **kw):
     lab = Gtk.Label(label=text, xalign=0, wrap=True, **kw)
     lab.get_style_context().add_class("dim-label")
     return lab
+
+
+def _try_box():
+    """A scratch area to type in and see lighting or key changes on the keyboard. Nothing is saved."""
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    box.pack_start(_heading("Try it out", 8), False, False, 0)
+    box.pack_start(_dim("Type here to try your changes on the keyboard. This isn't saved."), False, False, 0)
+    view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, left_margin=6, right_margin=6, top_margin=6,
+                        bottom_margin=6)
+    sc = Gtk.ScrolledWindow(shadow_type=Gtk.ShadowType.IN)
+    sc.set_size_request(-1, 90)
+    sc.add(view)
+    box.pack_start(sc, False, False, 0)
+    return box
 
 
 def _button(label, tip, cb, icon=None, suggested=False):
@@ -341,7 +355,7 @@ class Window(Gtk.ApplicationWindow):
             with Device() as d:
                 return {"model": d.model, "info": d.info(), "profile": Profile(d.profile()),
                         "effects": LedEffects(d.led_effects()),
-                        # per-key colours and macros often can't be read; show them empty rather than fail
+                        # per-key colors and macros often can't be read; show them empty rather than fail
                         "colors": KeyColors(cli._optional(d.key_colors, bytes(P.LED_COLORS_LEN))),
                         "macros": keymap.decode_macros(cli._optional(d.macros_blob, b""))}
 
@@ -645,7 +659,7 @@ class Window(Gtk.ApplicationWindow):
             return True
         self.uploading = False
         self.send_btn.set_sensitive(True)
-        if not self._upload_ok:   # failed or cancelled: the error bar explains it
+        if not self._upload_ok:   # failed or canceled: the error bar explains it
             self.progress_box.hide()
         return False
 
@@ -695,6 +709,8 @@ class Window(Gtk.ApplicationWindow):
 
         right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         right.pack_start(_heading("Settings for this effect"), False, False, 0)
+        self.fx_info = _dim("")
+        right.pack_start(self.fx_info, False, False, 0)
         self.bright = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 5, 1)
         self.bright.set_value_pos(Gtk.PositionType.RIGHT)
         self.bright.set_size_request(260, -1)
@@ -710,27 +726,28 @@ class Window(Gtk.ApplicationWindow):
         self.fx_color.set_size_request(90, -1)
         self.fx_color.connect("color-set", lambda *_: self._light_changed(color=True))
         crow.pack_start(self.fx_color, False, False, 0)
-        self.fx_mix = Gtk.CheckButton(label="Mixed colours")
+        self.fx_mix = Gtk.CheckButton(label="Mixed colors")
         self.fx_mix.connect("toggled", lambda *_: self._light_changed())
         crow.pack_start(self.fx_mix, False, False, 0)
-        self.color_row = _row("Colour", crow)
+        self.color_row = _row("Color", crow)
         right.pack_start(self.color_row, False, False, 0)
+        right.pack_start(_try_box(), False, False, 0)
 
         self.custom_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.custom_box.pack_start(_heading("Per-key colours", 8), False, False, 0)
-        self.custom_box.pack_start(_dim("Click keys to select them (click again to deselect), pick a colour, "
+        self.custom_box.pack_start(_heading("Per-key colors", 8), False, False, 0)
+        self.custom_box.pack_start(_dim("Click keys to select them (click again to deselect), pick a color, "
                                         "then paint."), False, False, 0)
         self.paint_view = KeyboardView(self._paint_click)
         self.custom_box.pack_start(self.paint_view, True, True, 0)
         tools = Gtk.Box(spacing=8)
         self.paint_color = Gtk.ColorButton(rgba=_rgba((255, 255, 255)))
         tools.pack_start(self.paint_color, False, False, 0)
-        tools.pack_start(_button("Paint selected", "Give the selected keys this colour", self._paint_selected,
+        tools.pack_start(_button("Paint selected", "Give the selected keys this color", self._paint_selected,
                                  suggested=True), False, False, 0)
         tools.pack_start(_button("Select all", None, self._paint_select_all), False, False, 0)
         tools.pack_start(_button("Select none", None, self._paint_select_none), False, False, 0)
-        tools.pack_start(_button("Paint all", "Every key in this colour", self._paint_all), False, False, 0)
-        tools.pack_end(_button("Send to keyboard", "Write the per-key colours", self._send_key_colors),
+        tools.pack_start(_button("Paint all", "Every key in this color", self._paint_all), False, False, 0)
+        tools.pack_end(_button("Send to keyboard", "Write the per-key colors", self._send_key_colors),
                        False, False, 0)
         self.custom_box.pack_start(tools, False, False, 0)
         right.pack_start(self.custom_box, False, False, 0)
@@ -756,24 +773,49 @@ class Window(Gtk.ApplicationWindow):
         self.speed.set_value(p["speed"])
         self.fx_mix.set_active(p["mix"])
         col = self.kb["effects"].color(eid)
-        self.fx_color.set_rgba(_rgba(col if any(col) else (255, 255, 255)))
+        col = col if any(col) else (255, 255, 255)
+        self.fx_color.set_rgba(_rgba(col))
         self._loading = was
+        if has_color:
+            self._carry = (col, p["mix"])
         self.bright.set_sensitive(has_bright)
         self.speed.set_sensitive(has_speed)
         self.color_row.set_sensitive(has_color)
         self.custom_box.set_visible(eid == CUSTOM)
+        self.fx_info.set_text(EFFECT_INFO.get(eid, ""))
 
     def _effect_selected(self, _box, row):
         if row is None or self.kb is None:
             return
+        send_color = not self._loading and self._carry_color(row.effect)
         self._show_effect_params(row.effect)
         if self._loading:
             return
         prof = self.kb["profile"]
         prof.effect = row.effect
-        buf = bytes(prof)
+        pbuf, fbuf = bytes(prof), bytes(self.kb["effects"])
         name = EFFECT_IDS[row.effect][1]
-        self._change(lambda d: d.set_profile(buf), "Lighting: %s…" % name)
+
+        def op(d):
+            d.set_profile(pbuf)
+            if send_color:
+                d.set_led_effects(fbuf)
+
+        self._change(op, "Lighting: %s…" % name)
+
+    def _carry_color(self, eid):
+        """Give a newly picked effect the color and "Mixed colors" choice the user already had, so trying
+        effects keeps them. Returns whether the effect colors need sending."""
+        carry = getattr(self, "_carry", None)
+        if carry is None or not EFFECT_IDS.get(eid, (eid, "?", True, True, False))[4]:
+            return False
+        rgb, mix = carry
+        prof, fx = self.kb["profile"], self.kb["effects"]
+        prof.set_led_param(eid, mix=mix)
+        if fx.color(eid) == tuple(rgb):
+            return False
+        fx.set_color(eid, rgb)
+        return True
 
     def _light_changed(self, color=False):
         if self._loading or self.kb is None:
@@ -794,10 +836,12 @@ class Window(Gtk.ApplicationWindow):
         if send_color:
             fx.set_color(eid, _rgb(self.fx_color.get_rgba()))
             if self.fx_mix.get_active():
-                self._loading = True              # picking a colour means "use this colour"
+                self._loading = True              # picking a color means "use this color"
                 self.fx_mix.set_active(False)
                 self._loading = False
                 prof.set_led_param(eid, mix=False)
+        if EFFECT_IDS.get(eid, (eid, "?", True, True, True))[4]:
+            self._carry = (_rgb(self.fx_color.get_rgba()), self.fx_mix.get_active())
         pbuf, fbuf = bytes(prof), bytes(fx)
 
         def op(d):
@@ -835,7 +879,7 @@ class Window(Gtk.ApplicationWindow):
     def _send_key_colors(self):
         buf = bytes(self.kb["colors"])
         store.update_config(key_colors=buf.hex())   # the keyboard can't report them back
-        self._change(lambda d: d.set_key_colors(buf), "Sending per-key colours…")
+        self._change(lambda d: d.set_key_colors(buf), "Sending per-key colors…")
 
     # --------------------------------------------------------------- keys --
 
@@ -855,6 +899,7 @@ class Window(Gtk.ApplicationWindow):
                             "held."), False, False, 0)
         self.keys_view = KeyboardView(self._key_clicked)
         box.pack_start(self.keys_view, True, True, 0)
+        box.pack_start(_try_box(), False, False, 0)
         return box
 
     def _tl(self):
@@ -1265,4 +1310,5 @@ class App(Gtk.Application):
 def main(page=None):
     GLib.set_prgname("sparekey")
     GLib.set_application_name("SpareKey %s" % __version__)
+    Gtk.Window.set_default_icon_name("sparekey")   # installed by install.sh; the theme falls back if missing
     return App(page).run([])

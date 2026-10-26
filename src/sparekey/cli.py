@@ -33,7 +33,7 @@ def _optional(read, fallback):
 def backup(d, path=None):
     """Save every readable settings block to a JSON file; returns its path."""
     # A layer is kept only if two reads agree: some (e.g. Mac FN) read back as random memory, and a
-    # missing layer falls back to the vendor defaults. Per-key colours and macros often can't be read
+    # missing layer falls back to the vendor defaults. Per-key colors and macros often can't be read
     # at all (the keyboard answers with a bare header); they're saved as "" then.
     km = {}
     for t in (0, 1):
@@ -190,7 +190,7 @@ def cmd_info(a):
         print("%s at %s, firmware %s" % (d.model, d.path, d.info()["firmware"]))
         print("lighting: %s, brightness %d/5, speed %d/%d, %s" % (
             EFFECT_IDS.get(prof.effect, (0, "effect %d" % prof.effect))[1], Profile.level_for(p["brightness"]),
-            p["speed"], 4, "mixed colours" if p["mix"] else "colour #%02x%02x%02x" % LedEffects(d.led_effects()).color(prof.effect)))
+            p["speed"], 4, "mixed colors" if p["mix"] else "color #%02x%02x%02x" % LedEffects(d.led_effects()).color(prof.effect)))
         print("sleep after %g min, Win lock %s, WASD/arrows swap %s" % (
             prof.sleep_minutes, "on" if prof.win_lock else "off", "on" if prof.wasd_swap else "off"))
     return 0
@@ -302,7 +302,7 @@ def main(argv=None):
     li.add_argument("--brightness", type=int, choices=range(6))
     li.add_argument("--speed", type=int, choices=range(5))
     li.add_argument("--color", help="RRGGBB")
-    li.add_argument("--mix", action="store_true", help="mixed colours instead of one colour")
+    li.add_argument("--mix", action="store_true", help="mixed colors instead of one color")
     li.set_defaults(func=cmd_light)
 
     b = sub.add_parser("backup", help="save the keyboard's settings to a file")

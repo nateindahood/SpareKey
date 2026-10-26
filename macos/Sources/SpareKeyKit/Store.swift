@@ -5,7 +5,7 @@ public struct Config: Codable {
     public var fit: Fit?
     public var keymap: [String: [String: [String: UInt32]]] = [:]   // table -> layer -> key index -> action
     public var macros: [Macro]?
-    public var keyColors: String?   // hex; the keyboard can't report per-key colours back
+    public var keyColors: String?   // hex; the keyboard can't report per-key colors back
     public init() {}
     enum CodingKeys: String, CodingKey { case libraryDir = "library_dir", fit, keymap, macros, keyColors = "key_colors" }
 

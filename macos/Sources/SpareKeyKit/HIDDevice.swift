@@ -3,20 +3,22 @@ import IOKit
 import IOKit.hid
 
 public enum DeviceError: Error, LocalizedError {
-    case notFound, notPermitted, openFailed(Int32), io(String), noAnswer(UInt8), busy, cancelled, stalled(Int)
+    case notFound, notPermitted, openFailed(Int32), io(String), noAnswer(UInt8), busy, canceled, stalled(Int)
     case outOfTurn(UInt8), emptyLayer(Int), badFrameCount(Int), badBackup(String)
 
     public var errorDescription: String? {
         switch self {
         case .notFound: return "Keyboard not found. Plug in the USB cable, then choose USB in the keyboard screen's settings menu."
         case .notPermitted:
-            return "macOS blocked access to the keyboard. Allow SpareKey under System Settings → Privacy & Security → "
-                + "Input Monitoring, then reopen SpareKey."
+            return "macOS blocked access to the keyboard. Switch SpareKey on under System Settings → Privacy & Security → "
+                + "Input Monitoring, then quit and reopen SpareKey. If it's already on, that switch belongs to an "
+                + "older copy of SpareKey: select it, remove it with the − button, then reopen SpareKey and allow it "
+                + "when asked."
         case .openFailed(let r): return String(format: "Couldn't open the keyboard (IOKit error 0x%08x).", r)
         case .io(let s): return "Talking to the keyboard failed: \(s). Was it unplugged?"
         case .noAnswer(let c): return "The keyboard didn't answer (cmd \(c)). Is USB selected in the keyboard screen's settings?"
         case .busy: return "The keyboard is busy (an upload is running)."
-        case .cancelled: return "Upload cancelled."
+        case .canceled: return "Upload canceled."
         case .stalled(let f): return "The keyboard stopped responding during the upload (frame \(f))."
         case .outOfTurn(let c): return "The keyboard kept answering out of turn (cmd \(c)). Try again, or replug it."
         case .emptyLayer(let n): return "Refusing to write a base layer with only \(n) keys set."
@@ -58,13 +60,25 @@ public final class S98Device {
         IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
     }
 
+    /// Whether this copy of SpareKey has Input Monitoring (a switch left on for an older build doesn't count).
+    public static var accessGranted: Bool {
+        IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+    }
+
     public init() throws {
-        guard let dev = S98Device.find().first else { throw DeviceError.notFound }
+        guard let dev = S98Device.find().first else {
+            // without Input Monitoring macOS may hide the keyboard: say that rather than "not found"
+            if !S98Device.accessGranted {
+                _ = S98Device.requestAccess()
+                throw DeviceError.notPermitted
+            }
+            throw DeviceError.notFound
+        }
         device = dev
         let pid = IOHIDDeviceGetProperty(dev, kIOHIDProductIDKey as CFString) as? Int ?? 0x01AF
         model = S98Device.models[pid] ?? "RK keyboard"
         let r = IOHIDDeviceOpen(dev, IOOptionBits(kIOHIDOptionsTypeNone))
-        if r == kIOReturnNotPermitted {
+        if r == kIOReturnNotPermitted || r == kIOReturnNotPrivileged {
             _ = S98Device.requestAccess()
             throw DeviceError.notPermitted
         }
@@ -107,7 +121,7 @@ public final class S98Device {
                 guard let ctx = ctx else { return }
                 let me = Unmanaged<S98Device>.fromOpaque(ctx).takeUnretainedValue()
                 var bytes = Array(UnsafeBufferPointer(start: report, count: length))
-                // IOKit includes the ID for numbered reports; normalise to "ID first" like hidraw
+                // IOKit includes the ID for numbered reports; normalize to "ID first" like hidraw
                 if bytes.first != UInt8(truncatingIfNeeded: reportID) { bytes.insert(UInt8(truncatingIfNeeded: reportID), at: 0) }
                 me.received(bytes)
             }, ctx)
@@ -239,7 +253,7 @@ public final class S98Device {
 
     /// frames: RGB565BE (S98.frameBytes each). progress(done, total) is called on the calling queue.
     public func upload(frames: [[UInt8]], delayMs: Int, progress: ((Int, Int) -> Void)? = nil,
-                       cancelled: (() -> Bool)? = nil) throws {
+                       canceled: (() -> Bool)? = nil) throws {
         // the S98 has room for 60 frames; sending more could write past the animation's flash area
         guard (1...S98.maxFrames).contains(frames.count) else { throw DeviceError.badFrameCount(frames.count) }
         let devDelay = S98.frameDelay(delayMs)
@@ -252,9 +266,9 @@ public final class S98Device {
         for (fi, frame) in frames.enumerated() {
             let chunks = (frame.count + S98.tftChunk - 1) / S98.tftChunk
             for ci in 0..<chunks {
-                if cancelled?() == true {
+                if canceled?() == true {
                     try? setFeature(S98.tftCtrl(.abort))
-                    throw DeviceError.cancelled
+                    throw DeviceError.canceled
                 }
                 let part = frame[(ci * S98.tftChunk)..<min(frame.count, (ci + 1) * S98.tftChunk)]
                 let pkt = S98.tftChunk(frame: fi, index: ci, data: part)
@@ -326,7 +340,7 @@ public final class S98Device {
     }
 }
 
-/// Serialises keyboard access within the process and, through a lock file, with the background service.
+/// Serializes keyboard access within the process and, through a lock file, with the background service.
 public final class DeviceQueue {
     public static let shared = DeviceQueue()
     private let queue = DispatchQueue(label: "sparekey.device")

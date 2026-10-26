@@ -1,11 +1,11 @@
 # SpareKey for macOS
 
 Native SwiftUI version of SpareKey: the same features as the Linux app (screen
-library and upload, lighting, per-key colours, key
+library and upload, lighting, per-key colors, key
 remapping, macros, clock, backup/restore, factory reset), talking to the
 keyboard through IOKit. It needs no Python.
 
-> **Status:** working on a real S98 (connecting, lighting, colours, brightness,
+> **Status:** working on a real S98 (connecting, lighting, colors, brightness,
 > both key layouts). The protocol code is also checked against the Linux
 > version's test vectors (`swift test`).
 
@@ -18,6 +18,12 @@ keyboard through IOKit. It needs no Python.
    next to SpareKey. On older versions, right-click SpareKey in Applications and choose **Open**.
    You only do this once.
 3. Allow SpareKey under **Input Monitoring** when macOS asks (see Permissions below).
+
+> **Each time you install a different version (newer or older), allow Input Monitoring again.**
+> SpareKey releases aren't signed with an Apple Developer ID, so macOS treats every version as a new
+> app. The switch in Settings may still look on, but it belongs to the version you had before.
+> Remove SpareKey from the Input Monitoring list with the − button, then open SpareKey and allow it
+> when asked. Details under [Permissions](#permissions).
 
 ## Build
 
@@ -41,18 +47,21 @@ System Settings → Privacy & Security → Input Monitoring, then quit and reope
 the app. SpareKey only uses the vendor configuration reports; it doesn't read
 your typing.
 
-**After rebuilding,** macOS may block the keyboard again even though the
-Input Monitoring switch is still on. `build-app.sh` signs the app ad hoc, so every
-build looks like a new app to macOS. Reset the grant, then reopen SpareKey and allow
-it again:
+**After updating, downgrading or rebuilding,** macOS blocks the keyboard again even
+though the Input Monitoring switch is still on. Releases and `build-app.sh` builds are
+signed ad hoc (no Apple Developer ID), and macOS ties the permission to that exact build,
+so the switch belongs to the copy you had before. SpareKey then says so. Select SpareKey in the Input Monitoring list, remove it with the −
+button, then reopen SpareKey and allow it when asked. Or reset the grant from a
+terminal:
 
 ```sh
 tccutil reset ListenEvent io.github.nateindahood.sparekey
 ```
 
-Signing with a stable self-signed certificate (Keychain Access → Certificate
-Assistant → Create a Certificate, type "Code Signing", then `codesign -s "<name>"`
-in `build-app.sh`) avoids this.
+If you build SpareKey yourself and rebuild often, signing with your own self-signed
+certificate (Keychain Access → Certificate Assistant → Create a Certificate, type "Code
+Signing", then `codesign -s "<name>"` in `build-app.sh`) keeps the permission across
+your builds.
 
 ## Troubleshooting
 

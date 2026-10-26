@@ -32,6 +32,7 @@ struct LightingView: View {
             }
             VStack(alignment: .leading, spacing: 14) {
                 Text("Settings for this effect").bold()
+                Text(Effects.descriptions[model.profile.effect] ?? "").foregroundColor(.secondary)
                 LabeledContent("Brightness") {
                     Slider(value: $level, in: 0...5, step: 1).frame(width: 260)
                     Text("\(Int(level))").frame(width: 20)
@@ -42,14 +43,15 @@ struct LightingView: View {
                     Text("\(Int(speed))").frame(width: 20)
                 }
                 .disabled(!(effect?.hasSpeed ?? false))
-                LabeledContent("Colour") {
+                LabeledContent("Color") {
                     ColorPicker("", selection: $color, supportsOpacity: false).labelsHidden()
-                    Toggle("Mixed colours", isOn: $mix)
+                    Toggle("Mixed colors", isOn: $mix)
                 }
                 .disabled(!(effect?.hasColor ?? false))
+                TryItBox(text: $model.lightingTryText)
                 if model.profile.effect == Effects.custom {
-                    Text("Per-key colours").bold().padding(.top, 8)
-                    Text("Click keys to select them (click again to deselect), pick a colour, then paint.")
+                    Text("Per-key colors").bold().padding(.top, 8)
+                    Text("Click keys to select them (click again to deselect), pick a color, then paint.")
                         .foregroundColor(.secondary)
                     KeyboardCanvas(colors: Dictionary(uniqueKeysWithValues: (0..<S98.keys).map { ($0, model.keyColors.get($0)) }),
                                    selected: selectedKeys) { i in
@@ -85,6 +87,7 @@ struct LightingView: View {
         mix = p.mix
         let c = model.effects.color(model.profile.effect)
         color = c.isBlack ? .white : c.color
+        if effect?.hasColor == true { model.carry = (c.isBlack ? RGB(255, 255, 255) : c, p.mix) }
         DispatchQueue.main.async { loading = false }
     }
 
@@ -99,6 +102,22 @@ struct LightingView: View {
     private func paint(_ keys: Set<Int>) {
         let c = RGB(paintColor)
         for i in keys { model.keyColors.set(i, c) }
+    }
+}
+
+/// A scratch area to type in and see lighting or key changes on the keyboard. Nothing is saved.
+struct TryItBox: View {
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Try it out").bold().padding(.top, 8)
+            Text("Type here to try your changes on the keyboard. This isn't saved.").foregroundColor(.secondary)
+            TextEditor(text: $text)
+                .font(.body)
+                .frame(height: 90)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.4)))
+        }
     }
 }
 
@@ -127,6 +146,7 @@ struct KeysView: View {
                 .foregroundColor(.secondary)
             KeyboardCanvas(labels: labels(), selected: editing.map { [$0] } ?? [],
                            marked: Set(model.config.overrides(table: table, layer: layer).keys)) { editing = $0 }
+            TryItBox(text: $model.keysTryText)
             Spacer()
         }
         .padding()

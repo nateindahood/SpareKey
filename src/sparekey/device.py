@@ -221,7 +221,7 @@ class Device:
             for ci in range(-(-len(buf) // P.TFT_CHUNK)):
                 if cancel and cancel():
                     self._set_feature(P.tft_ctrl(P.TFT_ABORT))
-                    raise DeviceError("Upload cancelled.")
+                    raise DeviceError("Upload canceled.")
                 pkt = P.tft_chunk(fi, ci, buf[ci * P.TFT_CHUNK:(ci + 1) * P.TFT_CHUNK])
                 for _attempt in range(6):
                     pause = gap - (time.monotonic() - last)

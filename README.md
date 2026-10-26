@@ -25,7 +25,7 @@ the keyboard directly over USB HID.
 - **Screen**: a library folder of GIFs/images with drag and drop, an exact
   preview at 320×172, and upload with progress, an ETA and cancel.
 - **Lighting**: the 18 built-in effects (plus Off) with brightness, speed and
-  colour or mixed colours, and per-key colours painted on a picture of the
+  color or mixed colors, and per-key colors painted on a picture of the
   keyboard.
 - **Keys**: remap any key on the base, FN, FN2 and tap layers, for both
   Windows and Mac modes. You can assign media/lighting functions and macros.
@@ -74,7 +74,9 @@ sparekey backup / restore FILE / reset --yes / clock
 
 ## macOS
 
-See [macos/README.md](macos/README.md).
+See [macos/README.md](macos/README.md). Note: after installing a different version (newer or older),
+macOS needs you to allow Input Monitoring again. Remove SpareKey from the list in System Settings
+and allow it when the app asks. The macOS README explains why.
 
 ## Development
 

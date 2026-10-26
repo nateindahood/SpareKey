@@ -25,10 +25,32 @@ public enum Effects {
         Effect(id: 13, name: "Sine wave", hasSpeed: true, hasBrightness: true, hasColor: true),
         Effect(id: 14, name: "Side scan", hasSpeed: true, hasBrightness: true, hasColor: true),
         Effect(id: 15, name: "Rotating windmill", hasSpeed: true, hasBrightness: true, hasColor: true),
-        Effect(id: 16, name: "Colourful waterfall", hasSpeed: true, hasBrightness: true, hasColor: false),
+        Effect(id: 16, name: "Colorful waterfall", hasSpeed: true, hasBrightness: true, hasColor: false),
         Effect(id: 17, name: "Blossoming", hasSpeed: true, hasBrightness: true, hasColor: true),
         Effect(id: 18, name: "Custom (per key)", hasSpeed: false, hasBrightness: false, hasColor: false),
         Effect(id: 0, name: "Off", hasSpeed: false, hasBrightness: false, hasColor: false),
+    ]
+    /// What each effect looks like (shown under the effect's settings).
+    public static let descriptions: [Int: String] = [
+        1: "Every key stays lit in one color.",
+        2: "All keys slowly fade in and out.",
+        3: "A rainbow sweeps across the keyboard.",
+        4: "Reacts to typing: light bursts out from each key you press and fades away.",
+        5: "Random keys light up and fade, like raindrops.",
+        6: "A rainbow turns around the keyboard like a wheel.",
+        7: "Reacts to typing: each key you press sends a ripple of light outward.",
+        8: "Random keys twinkle on and off like stars.",
+        9: "Listed by RK, but on the S98 it looks the same as Static, even while typing.",
+        10: "A short trail of light snakes around the keyboard.",
+        11: "Colors flow smoothly across the keyboard.",
+        12: "Reacts to typing: keys light up as you press them.",
+        13: "A wave of light rolls across the keyboard.",
+        14: "A band of light sweeps from side to side.",
+        15: "Light turns around the keyboard like windmill blades.",
+        16: "Colors pour down the keyboard like a waterfall.",
+        17: "Light blooms outward from the middle of the keyboard.",
+        18: "Each key shows the color you paint for it below.",
+        0: "All lighting is off.",
     ]
     public static let custom = 18
     public static func byID(_ id: Int) -> Effect? { all.first { $0.id == id } }
@@ -89,7 +111,7 @@ public struct Profile {
     public var wasdSwap: Bool { get { buf[17] != 0 } set { buf[17] = newValue ? 1 : 0 } }
 }
 
-/// 20 effects x 21 bytes; the first RGB triple is the effect's colour.
+/// 20 effects x 21 bytes; the first RGB triple is the effect's color.
 public struct LedEffects {
     public var buf: [UInt8]
     public init(_ buf: [UInt8]) { precondition(buf.count == S98.ledEffectLength); self.buf = buf }
@@ -105,7 +127,7 @@ public struct LedEffects {
     }
 }
 
-/// Per-key colours, planar R[126] G[126] B[126].
+/// Per-key colors, planar R[126] G[126] B[126].
 public struct KeyColors {
     public var buf: [UInt8]
     public init(_ buf: [UInt8]) { precondition(buf.count == S98.ledColorsLength); self.buf = buf }

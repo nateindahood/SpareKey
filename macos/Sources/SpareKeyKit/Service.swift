@@ -27,7 +27,7 @@ public enum Keyboard {
     @discardableResult
     public static func backup(_ d: S98Device, to url: URL? = nil) throws -> URL {
         // A layer is kept only if two reads agree: some (e.g. Mac FN) read back as random memory,
-        // and a missing layer falls back to the vendor defaults. Per-key colours and macros often
+        // and a missing layer falls back to the vendor defaults. Per-key colors and macros often
         // can't be read at all (the keyboard answers with a bare header); they're saved as "" then.
         var km = [String: [UInt32]]()
         for t in 0..<2 { for l in 0..<4 {
@@ -175,10 +175,10 @@ public enum Keyboard {
 
     /// Convert and send a file on an already-open device.
     public static func upload(_ d: S98Device, _ url: URL, fit: Fit, progress: ((Int, Int) -> Void)? = nil,
-                              cancelled: (() -> Bool)? = nil) throws {
+                              canceled: (() -> Bool)? = nil) throws {
         let frames = try Media.load(url, fit: fit)
         let data = frames.images.map(Media.encode)
-        try d.upload(frames: data, delayMs: frames.delayMs, progress: progress, cancelled: cancelled)
+        try d.upload(frames: data, delayMs: frames.delayMs, progress: progress, canceled: canceled)
         try d.syncClock()
     }
 }

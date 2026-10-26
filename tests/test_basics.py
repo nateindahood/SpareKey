@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from sparekey import keymap  # noqa: E402
 from sparekey import protocol as P  # noqa: E402
-from sparekey.settings import Profile  # noqa: E402
+from sparekey.settings import EFFECT_INFO, EFFECTS, Profile  # noqa: E402
 
 
 class Protocol(unittest.TestCase):
@@ -41,6 +41,9 @@ class Protocol(unittest.TestCase):
 
     def test_rgb565(self):
         self.assertEqual(P.rgb565be(bytes([255, 0, 0, 0, 0, 255])), b"\xf8\x00\x00\x1f")
+
+    def test_every_effect_is_described(self):
+        self.assertEqual(sorted(e[0] for e in EFFECTS), sorted(EFFECT_INFO))
 
     def test_ack(self):
         self.assertTrue(P.parse_ack(bytes.fromhex("090a060101")))

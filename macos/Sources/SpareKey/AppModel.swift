@@ -16,6 +16,9 @@ final class AppModel: ObservableObject {
     @Published var effects = LedEffects([UInt8](repeating: 0, count: S98.ledEffectLength))
     @Published var keyColors = KeyColors([UInt8](repeating: 0, count: S98.ledColorsLength))
     @Published var macros: [Macro] = []
+    // "Try it out" boxes on the Lighting and Keys pages: kept while the app runs, never saved
+    @Published var lightingTryText = ""
+    @Published var keysTryText = ""
 
     @Published var library: [URL] = []
     /// Frame count and a small thumbnail per library file, worked out once (not on every redraw).
@@ -64,7 +67,7 @@ final class AppModel: ObservableObject {
 
     func refresh() {
         run("Reading the keyboard…", { d -> (String, String, Profile, LedEffects, KeyColors, [Macro]) in
-            // per-key colours and macros often can't be read; show them empty rather than fail
+            // per-key colors and macros often can't be read; show them empty rather than fail
             var colors = (try? d.keyColors()) ?? KeyColors([UInt8](repeating: 0, count: S98.ledColorsLength))
             if !colors.buf.contains(where: { $0 != 0 }), let saved = Store.loadConfig().keyColors {
                 let b = Keyboard.unhex(saved)   // the keyboard can't report them: use the ones last sent from here
@@ -122,7 +125,7 @@ final class AppModel: ObservableObject {
                     self?.uploadProgress = Double(done) / Double(total)
                     self?.uploadText = "Sending \(done * 100 / total)% — about \(minutes(left)) left"
                 }
-            }, cancelled: { [weak self] in self?.cancelUpload ?? false })
+            }, canceled: { [weak self] in self?.cancelUpload ?? false })
         }, failed: { [weak self] in self?.uploadProgress = nil; self?.uploadText = "" }) { [weak self] _ in
             self?.uploadText = "Sent \(name)"
             self?.uploadProgress = nil
@@ -131,10 +134,24 @@ final class AppModel: ObservableObject {
 
     // MARK: lighting
 
+    /// The color and "Mixed colors" choice the user last had, carried to the next effect they try.
+    var carry: (color: RGB, mix: Bool)?
+
     func setEffect(_ id: Int) {
         profile.effect = id
-        let p = profile
-        change("Lighting: \(Effects.byID(id)?.name ?? "")…") { try $0.setProfile(p) }
+        var sendColor = false
+        if let c = carry, Effects.byID(id)?.hasColor == true {
+            profile.setLedParam(id, mix: c.mix)
+            if effects.color(id) != c.color {
+                effects.setColor(id, c.color)
+                sendColor = true
+            }
+        }
+        let p = profile, fx = effects
+        change("Lighting: \(Effects.byID(id)?.name ?? "")…") { d in
+            try d.setProfile(p)
+            if sendColor { try d.setLedEffects(fx) }
+        }
     }
 
     /// Debounced like the Linux GUI: sliders send 350 ms after they stop moving.
@@ -142,6 +159,7 @@ final class AppModel: ObservableObject {
         let e = profile.effect
         profile.setLedParam(e, brightness: Int(Profile.brightnessLevels[level]), speed: speed, mix: color != nil ? false : mix)
         if let c = color { effects.setColor(e, c) }
+        if Effects.byID(e)?.hasColor == true { carry = (effects.color(e), color != nil ? false : mix) }
         let p = profile, fx = effects, sendColor = color != nil
         lightWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -157,7 +175,7 @@ final class AppModel: ObservableObject {
     func sendKeyColors() {
         let c = keyColors
         Store.update { $0.keyColors = Keyboard.hex(c.buf) }   // the keyboard can't report them back
-        change("Sending per-key colours…") { try $0.setKeyColors(c) }
+        change("Sending per-key colors…") { try $0.setKeyColors(c) }
     }
 
     // MARK: keys
