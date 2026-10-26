@@ -205,9 +205,9 @@
    "name": "tft_start",
    "args": {
     "frames": 39,
-    "delay_ms": 75
+    "delay_ms": 0
    },
-   "hex": "0d0000010005004027004b00"
+   "hex": "0d0000010005004027000000"
   },
   {
    "name": "tft_finish",

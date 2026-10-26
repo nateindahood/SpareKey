@@ -53,6 +53,11 @@ final class VectorTests: XCTestCase {
         let px = m["rgb565be"] as! [String: String]
         XCTAssertEqual(hex(S98.rgb565be(unhex(px["rgb"]!))), px["out"]!)
         for pair in m["frame_delay"] as! [[Int]] { XCTAssertEqual(S98.frameDelay(pair[0]), pair[1]) }
+        for c in m["pick_frames"] as! [[String: Any]] {
+            let got = S98.pickFrames(c["durations"] as! [Int], maxFrames: c["max_frames"] as! Int)
+            XCTAssertEqual(got.indices, c["indices"] as! [Int], "\(c["durations"]!)")
+            XCTAssertEqual(got.ms, c["ms"] as! Int)
+        }
 
         var prof = Profile([UInt8](repeating: 0, count: 128))
         prof.effect = 9

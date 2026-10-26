@@ -156,9 +156,36 @@ def tft_chunk(frame, index, data):
     return bytes(p)
 
 
+DRAW_MS = 180   # the S98 needs this long to draw one frame (DrawFrameTime in the vendor's model file)
+
+
 def frame_delay(ms):
-    """The vendor app subtracts the keyboard's own ~25 ms draw time."""
-    return ms - 25 if ms >= 25 else ms
+    """Extra wait to send for a frame shown `ms` long: the keyboard adds its own draw time on top."""
+    return max(0, ms - DRAW_MS)
+
+
+def pick_frames(durations, max_frames=MAX_FRAMES, draw_ms=DRAW_MS):
+    """Which frames to send, and how long each is shown, so the animation keeps its real speed.
+
+    Like the Windows app: the keyboard can't show a frame for less than `draw_ms`, so a faster GIF
+    is thinned out evenly in time (GIFs of 6 frames or fewer are sent whole). Returns (indices, ms).
+    """
+    n = len(durations)
+    total = sum(durations)
+    k = min(n, max_frames)
+    if n > 6:
+        k = max(1, min(k, round(total / draw_ms)))
+    starts, t = [], 0
+    for d in durations:
+        starts.append(t)
+        t += d
+    idx, j = [], 0
+    for i in range(k):
+        at = i * total / k
+        while j + 1 < n and starts[j + 1] <= at:
+            j += 1
+        idx.append(j)
+    return idx, max(draw_ms, round(total / k))
 
 
 def rgb565be(rgb_bytes):

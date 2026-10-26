@@ -32,9 +32,12 @@ public enum Media {
         public let delayMs: Int
     }
 
+    /// Frames that will be sent (after thinning out fast GIFs).
     public static func frameCount(_ url: URL) -> Int {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return 1 }
-        return min(S98.maxFrames, max(1, CGImageSourceGetCount(src)))
+        let n = CGImageSourceGetCount(src)
+        guard n > 0 else { return 1 }
+        return S98.pickFrames((0..<n).map { delay(src, $0) }).indices.count
     }
 
     static func delay(_ src: CGImageSource, _ i: Int) -> Int {
@@ -49,27 +52,20 @@ public enum Media {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw MediaError.unreadable(url.lastPathComponent) }
         let count = CGImageSourceGetCount(src)
         guard count > 0 else { throw MediaError.unreadable(url.lastPathComponent) }
-        var indices = Array(0..<count)
-        var durations = indices.map { delay(src, $0) }
-        if count > maxFrames {   // keep playback speed: merge the skipped frames' time
-            let step = Double(count) / Double(maxFrames)
-            let idx = (0..<maxFrames).map { Int(Double($0) * step) }
-            durations = idx.enumerated().map { (n, start) in
-                let end = n + 1 < idx.count ? idx[n + 1] : count
-                return durations[start..<end].reduce(0, +)
-            }
-            indices = idx
-        }
-        let ms = max(10, min(65535, Int((Double(durations.reduce(0, +)) / Double(durations.count)).rounded())))
+        // the keyboard can't show a frame faster than it draws it: thin out fast GIFs to keep their speed
+        let pick = S98.pickFrames((0..<count).map { delay(src, $0) }, maxFrames: maxFrames)
+        let indices = pick.indices
+        let ms = min(65535, pick.ms)
         // GIF frames can be partial: composite each onto the previous one like a browser does
         var canvas: CGImage?
         var out = [CGImage]()
-        let wanted = Set(indices)
+        var rendered = [Int: CGImage]()
         for i in 0..<(indices.last! + 1) {
             guard let img = CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
             canvas = composite(img, over: canvas)
-            if wanted.contains(i), let c = canvas { out.append(render(c, fit: fit)) }
+            if indices.contains(i), let c = canvas { rendered[i] = render(c, fit: fit) }
         }
+        for i in indices { if let r = rendered[i] { out.append(r) } }   // a frame may be picked twice
         guard !out.isEmpty else { throw MediaError.unreadable(url.lastPathComponent) }
         return Frames(images: out, delayMs: ms)
     }

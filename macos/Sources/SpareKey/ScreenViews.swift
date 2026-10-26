@@ -137,8 +137,9 @@ struct ScreenView: View {
                 } else if !model.uploadText.isEmpty {
                     Text(model.uploadText).foregroundColor(.secondary)
                 }
-                Text("The keyboard holds one animation. Sending takes about 13 seconds per frame (GIFs are limited to 60 "
-                     + "frames), and the screen is busy while it receives.")
+                Text("The keyboard holds one animation and shows a frame at most every 0.18 s, so fast GIFs are sent "
+                     + "with fewer frames to keep their speed (at most 60). Sending takes about 13 seconds per frame, "
+                     + "and the screen is busy while it receives.")
                     .foregroundColor(.secondary).font(.callout).fixedSize(horizontal: false, vertical: true)
                 Spacer()
             }

@@ -411,8 +411,9 @@ class Window(Gtk.ApplicationWindow):
         self.progress_box.pack_start(self.progress, True, True, 0)
         self.progress_box.pack_start(_button("Cancel", "Stop the upload", self._cancel_upload), False, False, 0)
         right.pack_start(self.progress_box, False, False, 0)
-        right.pack_start(_dim("The keyboard holds one animation. Sending takes about 13 seconds per frame "
-                              "(GIFs are limited to 60 frames), and the screen is busy while it receives.",
+        right.pack_start(_dim("The keyboard holds one animation and shows a frame at most every 0.18 s, so fast "
+                              "GIFs are sent with fewer frames to keep their speed (at most 60). Sending takes "
+                              "about 13 seconds per frame, and the screen is busy while it receives.",
                               max_width_chars=60), False, False, 0)
         paned.pack2(right, False, False)
         return paned

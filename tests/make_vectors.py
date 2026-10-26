@@ -70,7 +70,11 @@ def main():
     kc.set(5, (10, 20, 30))
     data = {
         "rgb565be": {"rgb": h(pixels), "out": h(P.rgb565be(pixels))},
-        "frame_delay": [[100, P.frame_delay(100)], [25, 0], [20, 20]],
+        "frame_delay": [[ms, P.frame_delay(ms)] for ms in (100, 180, 200, 400, 0)],
+        "pick_frames": [{"durations": d, "max_frames": m, "indices": P.pick_frames(d, m)[0], "ms": P.pick_frames(d, m)[1]}
+                        for d, m in (([60] * 53, 60), ([100] * 39, 60), ([130] * 12, 60), ([70] * 120, 60),
+                                     ([54] * 44, 60), ([20] * 5, 60), ([500] * 3, 60), ([250] * 100, 60),
+                                     ([30, 200, 40, 500, 60, 60, 300, 20, 90], 60), ([100], 60))],
         "macros": {"macros": macros, "blob": h(blob)},
         "profile_edit": {"ops": "effect=9; led_param(9, brightness=12, speed=3, mix=true); sleep=5min; winlock=on",
                          "out": h(bytes(prof))},

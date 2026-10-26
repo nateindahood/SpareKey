@@ -165,5 +165,10 @@ The Windows app sends this once a second, with `SysParamMask = 5` for the S98.
    wait for the ack: status 1 = next, otherwise resend
 3. `0d … | 00 <frames> 00 <delay>` (finish, mode 0). Abort = mode 2.
 
-`delay = ms − 25` when ms ≥ 25 (the vendor subtracts the keyboard's draw time).
+**Timing.** The keyboard needs about **180 ms to draw a frame** (`DrawFrameTime=180` in the
+Windows app's S98 file) and waits `delay` ms on top, so a frame is shown for `180 + delay` ms.
+The Windows app therefore thins out GIFs that change faster than that: with more than 6 frames, it
+sends `k = round(total_ms / 180)` frames (at most 60), picked evenly in time, with
+`delay = max(0, ms_per_frame − 180)`. RK's web driver subtracts only 25 ms, which plays S98 GIFs
+about 3× too slowly. See `pick_frames` in protocol.py and the `pick_frames` vectors.
 Each chunk takes about 59 ms (the keyboard sets the pace), so about 12.7 s per frame.

@@ -138,7 +138,31 @@ public enum S98 {
         return p
     }
 
-    public static func frameDelay(_ ms: Int) -> Int { ms >= 25 ? ms - 25 : ms }
+    /// The S98 needs this long to draw one frame (DrawFrameTime in the vendor's model file).
+    public static let drawMs = 180
+
+    /// Extra wait to send for a frame shown `ms` long: the keyboard adds its own draw time on top.
+    public static func frameDelay(_ ms: Int) -> Int { max(0, ms - drawMs) }
+
+    /// Which frames to send, and how long each is shown, so the animation keeps its real speed.
+    /// Like the Windows app: a GIF faster than the draw time is thinned out evenly in time
+    /// (GIFs of 6 frames or fewer are sent whole). Mirrors protocol.pick_frames.
+    public static func pickFrames(_ durations: [Int], maxFrames: Int = S98.maxFrames, drawMs: Int = S98.drawMs) -> (indices: [Int], ms: Int) {
+        let n = durations.count
+        guard n > 0 else { return ([], drawMs) }
+        let total = durations.reduce(0, +)
+        var k = min(n, maxFrames)
+        if n > 6 { k = max(1, min(k, Int((Double(total) / Double(drawMs)).rounded(.toNearestOrEven)))) }
+        var starts = [Int](), t = 0
+        for d in durations { starts.append(t); t += d }
+        var idx = [Int](), j = 0
+        for i in 0..<k {
+            let at = Double(i) * Double(total) / Double(k)
+            while j + 1 < n && Double(starts[j + 1]) <= at { j += 1 }
+            idx.append(j)
+        }
+        return (idx, max(drawMs, Int((Double(total) / Double(k)).rounded(.toNearestOrEven))))
+    }
 
     /// Packed RGB888 -> RGB565 big-endian.
     public static func rgb565be(_ rgb: [UInt8]) -> [UInt8] {

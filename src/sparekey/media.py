@@ -11,7 +11,7 @@ class MediaError(Exception):
 
 
 def load(path, fit="cover", max_frames=P.MAX_FRAMES, delay=None):
-    """Returns (list of PIL RGB images, ms per frame)."""
+    """Returns (list of PIL RGB images, ms each is shown). Fast GIFs are thinned out to keep their speed."""
     try:
         from PIL import Image, ImageOps, ImageSequence
     except ImportError:
@@ -24,13 +24,10 @@ def load(path, fit="cover", max_frames=P.MAX_FRAMES, delay=None):
             frames.append(fr.convert("RGBA"))
     except (OSError, ValueError) as e:
         raise MediaError("Couldn't read %s: %s" % (path, e))
-    if len(frames) > max_frames:   # keep playback speed: merge the skipped frames' time
-        step = len(frames) / max_frames
-        idx = [int(i * step) for i in range(max_frames)]
-        durations = [sum(durations[idx[i]:idx[i + 1] if i + 1 < len(idx) else len(durations)])
-                     for i in range(len(idx))]
-        frames = [frames[i] for i in idx]
-    ms = delay or round(sum(durations) / len(durations))
+    idx, ms = P.pick_frames(durations, max_frames)
+    frames = [frames[i] for i in idx]
+    if delay:
+        ms = max(P.DRAW_MS, delay)
     size = (P.SCREEN_W, P.SCREEN_H)
     out = []
     for fr in frames:
@@ -47,13 +44,14 @@ def load(path, fit="cover", max_frames=P.MAX_FRAMES, delay=None):
 
 
 def frame_count(path, max_frames=P.MAX_FRAMES):
+    """Frames that will be sent (after thinning out fast GIFs)."""
     try:
-        from PIL import Image
+        from PIL import Image, ImageSequence
         with Image.open(path) as im:
-            return min(max_frames, getattr(im, "n_frames", 1))
+            durations = [fr.info.get("duration", 100) or 100 for fr in ImageSequence.Iterator(im)]
+        return len(P.pick_frames(durations, max_frames)[0])
     except Exception:
         return 1
-
 
 def encode(images):
     return [P.rgb565be(im.tobytes()) for im in images]
