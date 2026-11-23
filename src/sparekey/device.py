@@ -9,7 +9,17 @@ import time
 from . import protocol as P
 
 VID = 0x258A
-PIDS = {0x01AF: "RK S98"}
+PIDS = {
+    0x01AF: "RK S98 US",
+    0x01BF: "RK S98 UK",
+    0x0223: "RK S98 Thai",
+    0x0224: "RK S98 German",
+    0x022B: "RK S98 Spanish",
+    0x022F: "RK S98 Japanese",
+    0x0230: "RK S98 Russian",
+    0x023F: "RK S98 Traditional Chinese",
+    0x0241: "RK S98 French",
+}
 LOCK_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR")
                          or os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "sparekey"),
                          "sparekey-device.lock")
